@@ -27,6 +27,11 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
   const video = useRef<HTMLVideoElement>(null)
   const timeline = useRef<HTMLDivElement>(null)
   const dragging = useRef<'start' | 'end' | 'seek' | null>(null)
+  const wasPlaying = useRef(false)
+  const [scrub, setScrubState] = useState<number | null>(null)
+  const scrubRef = useRef<number | null>(null)
+  const setScrub = (t: number | null) => { scrubRef.current = t; setScrubState(t) }
+  const [hover, setHover] = useState<{ x: number; t: number } | null>(null)
 
   useEffect(() => {
     void window.cf.library.get(clipId).then((c) => setClip(c ?? null))
@@ -104,28 +109,51 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
     return () => window.removeEventListener('keydown', onKey)
   }, [togglePlay, seek, duration, toggleFav, remove, neighbors, openClip, onClose])
 
-  // Timeline dragging
+  // Timeline: click or drag anywhere to scrub. While dragging, playback pauses and the playhead
+  // follows the cursor immediately (timeupdate only fires ~4x a second); playback resumes on release.
   const posToTime = (clientX: number) => {
     const r = timeline.current!.getBoundingClientRect()
     return Math.max(0, Math.min(duration, ((clientX - r.left) / r.width) * duration))
   }
   const onPointerDown = (e: React.PointerEvent, what: 'start' | 'end' | 'seek') => {
+    if (e.button !== 0 || !duration) return
     e.preventDefault()
     dragging.current = what
-    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    // Capture on the bar itself so moves keep coming even when the cursor leaves it.
+    timeline.current?.setPointerCapture(e.pointerId)
+    if (what === 'seek') {
+      const v = video.current
+      wasPlaying.current = !!v && !v.paused
+      v?.pause()
+    }
     onPointerMove(e)
   }
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragging.current || !duration) return
+    if (!duration || !timeline.current) return
     const t = posToTime(e.clientX)
-    if (dragging.current === 'seek') seek(t)
-    else if (dragging.current === 'start') setTrim((tr) => ({ start: Math.min(t, (tr?.end ?? duration) - 0.5), end: tr?.end ?? duration }))
+    const r = timeline.current.getBoundingClientRect()
+    setHover({ x: Math.max(0, Math.min(r.width, e.clientX - r.left)), t })
+    if (!dragging.current) return
+    if (dragging.current === 'seek') {
+      setScrub(t)
+      if (video.current) video.current.currentTime = t
+    } else if (dragging.current === 'start') setTrim((tr) => ({ start: Math.min(t, (tr?.end ?? duration) - 0.5), end: tr?.end ?? duration }))
     else setTrim((tr) => ({ start: tr?.start ?? 0, end: Math.max(t, (tr?.start ?? 0) + 0.5) }))
   }
-  const onPointerUp = () => { dragging.current = null }
+  const onPointerUp = (e?: React.PointerEvent) => {
+    const what = dragging.current
+    dragging.current = null
+    if (e && timeline.current?.hasPointerCapture(e.pointerId)) timeline.current.releasePointerCapture(e.pointerId)
+    if (what === 'seek') {
+      if (scrubRef.current !== null) setTime(scrubRef.current)
+      setScrub(null)
+      if (wasPlaying.current) void video.current?.play()
+    }
+  }
 
   if (!clip) return null
   const pct = (t: number) => (duration ? (t / duration) * 100 : 0)
+  const shown = scrub ?? time
 
   return (
     <div className="fixed inset-0 z-[100] bg-[rgba(2,8,20,0.5)] backdrop-blur-xl flex items-center justify-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -165,15 +193,25 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
 
           {/* Timeline */}
           <div className="px-4 pt-3 pb-3 space-y-2">
+            <div className="relative group/tl">
+            {hover && (
+              <div className="absolute -top-9 z-20 pointer-events-none -translate-x-1/2" style={{ left: hover.x }}>
+                <span className="font-hud text-[11px] tabular px-2 py-1 rounded-lg border border-white/15" style={{ background: 'rgba(8,14,28,0.92)', boxShadow: '0 8px 20px -8px rgba(0,0,0,0.9)' }}>{fmtTime(hover.t)}</span>
+              </div>
+            )}
             <div
               ref={timeline}
-              className="relative h-11 rounded-full overflow-hidden cursor-pointer select-none touch-none border border-white/12" style={{ background: "rgba(0,10,25,0.45)", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.5)" }}
+              className={`relative h-11 rounded-full overflow-hidden select-none touch-none border border-white/12 ${dragging.current === 'seek' ? 'cursor-grabbing' : 'cursor-pointer'}`}
+              style={{ background: 'rgba(0,10,25,0.45)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)' }}
               onPointerDown={(e) => onPointerDown(e, 'seek')}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              onPointerLeave={() => { if (!dragging.current) setHover(null) }}
             >
               {/* progress */}
-              <div className="absolute inset-y-0 left-0" style={{ width: `${pct(time)}%`, background: "linear-gradient(90deg, rgba(155,123,255,0.35), rgba(79,227,255,0.45))" }} />
+              <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${pct(shown)}%`, background: 'linear-gradient(90deg, rgba(155,123,255,0.35), rgba(79,227,255,0.45))' }} />
+              {hover && !dragging.current && <div className="absolute top-0 bottom-0 w-px bg-white/35 pointer-events-none" style={{ left: hover.x }} />}
               {trim && (
                 <>
                   <div className="absolute inset-y-0 left-0 bg-black/55" style={{ width: `${pct(trim.start)}%` }} />
@@ -187,17 +225,21 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                 <button
                   key={i}
                   title={`Bookmark ${i + 1} · ${fmtTime(b)}`}
-                  onPointerDown={(e) => { e.stopPropagation(); seek(b) }}
+                  onPointerDown={(e) => { e.stopPropagation(); seek(b); setTime(b) }}
                   className="absolute top-1 w-3 h-3 -ml-1.5 rotate-45 rounded-[3px] z-10 bg-[#ffc857] shadow-[0_0_8px_#ffc857] hover:scale-125 transition-transform"
                   style={{ left: `${pct(b)}%` }}
                 />
               ))}
-              <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_10px_#4fe3ff,0_0_4px_#fff] pointer-events-none" style={{ left: `${pct(time)}%` }} />
+              <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_10px_#4fe3ff,0_0_4px_#fff] pointer-events-none" style={{ left: `${pct(shown)}%` }}>
+                {/* Grab knob: grows while hovering or dragging */}
+                <span className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_12px_#4fe3ff] transition-all duration-150 ${scrub !== null ? 'w-4 h-4' : 'w-2.5 h-2.5 group-hover/tl:w-3.5 group-hover/tl:h-3.5'}`} />
+              </div>
+            </div>
             </div>
             <div className="flex items-center gap-2">
               <button className="btn-ghost h-9 w-9 px-0" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
               <button className="btn-ghost h-9 w-9 px-0" onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
-              <span className="font-hud text-[11px] tabular text-ink-2 w-28">{fmtTime(time)} / {fmtTime(duration)}</span>
+              <span className="font-hud text-[11px] tabular text-ink-2 w-28">{fmtTime(shown)} / {fmtTime(duration)}</span>
               <span className="flex-1" />
               {trim ? (
                 <>
