@@ -56,6 +56,8 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
   encoder: Encoder = 'libx264'
   resolution = ''
   snapshotIntervalSec = 3
+  /** While set, segments recorded after this moment are never pruned (long recording). */
+  holdFromMs: number | null = null
   snapshotsEnabled = false
 
   constructor(workDir: string) {
@@ -68,7 +70,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     this.settings = settings
     this.display = display
     this.stopping = false
-    if (!opts.restart) {
+    if (!opts.restart && this.holdFromMs === null) {
       fs.rmSync(this.segDir, { recursive: true, force: true })
       this.restarts = []
     }
@@ -297,7 +299,8 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
 
   private prune() {
     if (!this.settings || this.pendingSaves > 0) return
-    const keepAfter = Date.now() - (this.settings.bufferSeconds + 10) * 1000
+    const normal = Date.now() - (this.settings.bufferSeconds + 10) * 1000
+    const keepAfter = this.holdFromMs === null ? normal : Math.min(normal, this.holdFromMs - SEG_SECONDS * 2000)
     for (const seg of this.listSegments()) {
       if (seg.birthMs < keepAfter) {
         try { fs.unlinkSync(seg.file) } catch { /* in use */ }

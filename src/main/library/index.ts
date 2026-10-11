@@ -25,6 +25,7 @@ export interface AddMeta {
   title?: string
   tags?: string[]
   hypeDb?: number
+  bookmarks?: number[]
 }
 
 /** JSON-backed clip index. One folder of mp4s + thumbnails, one index file, optional trash folder. */
@@ -114,6 +115,7 @@ export class Library extends EventEmitter<{ change: [] }> {
       tags: meta.tags ?? [],
       favorite: false,
       hypeDb: meta.hypeDb,
+      bookmarks: meta.bookmarks,
       width: info.width,
       height: info.height,
       fps: info.fps,
@@ -223,5 +225,5 @@ export class Library extends EventEmitter<{ change: [] }> {
 function defaultTitle(trigger: TriggerSource): string {
   const d = new Date()
   const stamp = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-  return { hotkey: 'Clip', vision: 'Auto clip', voice: 'Voice chat', hype: 'Hype moment', manual: 'Clip' }[trigger] + ' ' + stamp
+  return { hotkey: 'Clip', vision: 'Auto clip', voice: 'Voice chat', hype: 'Hype moment', manual: 'Clip', long: 'Long recording' }[trigger] + ' ' + stamp
 }

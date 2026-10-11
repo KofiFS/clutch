@@ -7,6 +7,7 @@ import { disposeForegroundWatcher, listRunningApps } from './capture/foreground'
 import { checkWebhook, makeShareable, postClip } from './share/discord'
 import { clipOfTheDay, DailyDigest } from './highlights'
 import { healthCheck } from './health'
+import { isInside, serveFile } from './fileServer'
 import type { LibraryQuery } from './library'
 import { OverlayToast } from './overlay'
 import { Recorder } from './recorder'
@@ -56,7 +57,7 @@ function createWindow() {
     title: 'Clutch',
     webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true }
   })
-  win.once('ready-to-show', () => { if (!settings.get().app.startMinimized) win?.show() })
+  win.once('ready-to-show', () => { if (!settings.get().app.startMinimized && !launchedHidden) win?.show() })
   win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
   // Production UI is served from cf://app/ (a registered secure scheme) rather than file:// so that
   // audio worklets, blob URLs and other secure-context features work.
@@ -66,21 +67,39 @@ function createWindow() {
     if (!quitting && settings.get().app.minimizeToTray && tray) {
       e.preventDefault()
       win?.hide()
+      // First time only: tell people where the app went.
+      if (!settings.get().app.trayHintShown) {
+        settings.set({ app: { ...settings.get().app, trayHintShown: true } })
+        if (Notification.isSupported()) {
+          const n = new Notification({ title: 'Clutch is still running', body: 'Find it in the system tray next to the clock (click ^ if it is hidden). Your hotkeys keep working.', icon: nativeImage.createFromPath(iconPath(256)) })
+          n.on('click', () => showWindow())
+          n.show()
+        }
+      }
     }
   })
   win.on('closed', () => { win = null })
 }
 
-function showWindow() {
+function showWindow(page?: string) {
   if (!win) createWindow()
   else { if (win.isMinimized()) win.restore(); win.show(); win.focus() }
+  if (page) send('navigate', page)
+}
+
+/** Windows login item; only meaningful for the installed app (dev runs would register bare electron.exe). */
+function applyLaunchAtLogin(on: boolean) {
+  if (!app.isPackaged || process.platform !== 'win32') return
+  app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] })
 }
 
 function send(channel: string, payload: unknown) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
 }
 
-const hotkeySig = (s: Settings) => JSON.stringify([s.capture.clipHotkey, s.capture.extraHotkeys, s.capture.lengthUpHotkey, s.capture.lengthDownHotkey])
+const hotkeySig = (s: Settings) => JSON.stringify([s.capture.clipHotkey, s.capture.extraHotkeys, s.capture.lengthUpHotkey, s.capture.lengthDownHotkey, s.capture.longRecordHotkey, s.capture.bookmarkHotkey])
+/** Launched by Windows at login: stay in the tray. */
+const launchedHidden = process.argv.includes('--hidden')
 
 /** Show the new clip length over the game; it is the only feedback you get while playing. */
 function announceLength(r: { seconds: number; edge: 'min' | 'max' | null }) {
@@ -112,6 +131,8 @@ function registerHotkey(s: Settings) {
   for (const x of s.capture.extraHotkeys) reg(x.key, () => void recorder.clipNow('hotkey', x.seconds))
   reg(s.capture.lengthUpHotkey, () => announceLength(recorder.stepClipLength(1)))
   reg(s.capture.lengthDownHotkey, () => announceLength(recorder.stepClipLength(-1)))
+  reg(s.capture.longRecordHotkey, () => void recorder.toggleLong())
+  reg(s.capture.bookmarkHotkey, () => recorder.bookmark())
   if (failed.length) recorder.log('error', `Could not register ${failed.join(', ')} - another app (Medal?) may already use ${failed.length > 1 ? 'them' : 'it'}. Pick different keys under Settings.`)
   recorder.setHotkeyRegistered(mainOk !== false && !!s.capture.clipHotkey.trim())
 }
@@ -137,7 +158,12 @@ app.whenReady().then(async () => {
       if (!target.startsWith(rendererDir)) return new Response('forbidden', { status: 403 })
       return net.fetch(pathToFileURL(target).toString())
     }
-    return net.fetch(pathToFileURL(rel).toString())
+    // Only serve clips, thumbnails and icons: the clips folder, the app's data folder,
+    // and any folder that already holds a library clip (e.g. an older clips folder).
+    const file = path.normalize(rel)
+    const roots = [settings.get().capture.outputDir, app.getPath('userData'), ...new Set(recorder.library.all().map((c) => path.dirname(path.dirname(c.file))))]
+    if (!isInside(file, roots)) return new Response('forbidden', { status: 403 })
+    return serveFile(file, req)
   })
 
   // System audio: the renderer calls getDisplayMedia({audio:true}) and we hand it the screen + loopback audio.
@@ -154,6 +180,7 @@ app.whenReady().then(async () => {
     if (settings.get().app.overlayToasts) overlay?.show('Clipped!', `${clip.game} · ${Math.round(clip.durationSec)}s`, 'clip')
   })
   recorder.on('game', (g) => send('game', g))
+  recorder.on('notice', (n) => overlay?.show(n.title, n.sub, n.kind, 2200))
   recorder.library.on('change', () => send('library-changed', null))
   scheduler.on('change', () => send('uploads-changed', null))
   scheduler.on('log', (m) => recorder.log('upload', m))
@@ -161,6 +188,7 @@ app.whenReady().then(async () => {
   settings.onChange((s) => {
     if (hotkeySig(s) !== hotkeySignature) registerHotkey(s)
     tray?.refresh()
+    if (app.isPackaged && app.getLoginItemSettings({ args: ['--hidden'] }).openAtLogin !== s.app.launchAtLogin) applyLaunchAtLogin(s.app.launchAtLogin)
     // Keep the window in sync with changes made by the main process (YouTube connect, tray, etc.).
     send('settings-changed', s)
     if (win && canAcrylic) {
@@ -234,6 +262,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('buffer:stop', () => recorder.stop('manual'))
   ipcMain.handle('buffer:status', () => recorder.status)
   ipcMain.handle('clip:now', () => recorder.clipNow('manual'))
+  ipcMain.handle('long:toggle', () => recorder.toggleLong())
+  ipcMain.handle('bookmark:add', () => recorder.bookmark())
+  ipcMain.handle('system:canLaunchAtLogin', () => app.isPackaged && process.platform === 'win32')
   ipcMain.handle('activity:list', () => recorder.activity)
   ipcMain.on('audio:push', (_e, pcm: ArrayBuffer, levelDb: number) => recorder.pushSystemAudio(Buffer.from(pcm), levelDb))
 
@@ -266,7 +297,8 @@ app.whenReady().then(async () => {
       recorder.library.remove(clip.id)
       return added
     }
-    return recorder.library.add(out, { game: clip.game, gameProcess: clip.gameProcess, gameIcon: clip.gameIcon, trigger: clip.trigger, event: clip.event, title: `${clip.title} (trimmed)`, tags: clip.tags })
+    // A piece cut out of a long recording is a normal clip (shows in Clip of the day, not under Long).
+    return recorder.library.add(out, { game: clip.game, gameProcess: clip.gameProcess, gameIcon: clip.gameIcon, trigger: clip.trigger === 'long' ? 'manual' : clip.trigger, event: clip.event, title: `${clip.title} (trimmed)`, tags: clip.tags })
   })
 
   ipcMain.handle('library:viewed', (_e, id: string) => recorder.library.markViewed(id))
@@ -301,7 +333,13 @@ app.whenReady().then(async () => {
   })
 
   tray = new AppTray({
-    show: showWindow,
+    show: (page) => showWindow(page),
+    toggleLong: () => void recorder.toggleLong(),
+    bookmark: () => recorder.bookmark(),
+    isLong: () => !!recorder.longRecording,
+    hotkeys: () => ({ clip: settings.get().capture.clipHotkey, long: settings.get().capture.longRecordHotkey, bookmark: settings.get().capture.bookmarkHotkey }),
+    launchAtLogin: () => ({ enabled: settings.get().app.launchAtLogin, available: app.isPackaged && process.platform === 'win32' }),
+    setLaunchAtLogin: (on) => { settings.set({ app: { ...settings.get().app, launchAtLogin: on } }) },
     startStop: () => void (recorder.status.running ? recorder.stop('manual') : recorder.start('manual')),
     clipNow: () => void recorder.clipNow('manual'),
     lengths: () => ({ options: recorder.lengthOptions(), current: recorder.effectiveCapture().preSeconds }),

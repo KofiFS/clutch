@@ -68,6 +68,11 @@ export default function Dashboard() {
               ) : (
                 <button className="btn-primary px-6 h-11" disabled={status.starting} onClick={() => void start()}>{status.starting ? 'Starting…' : 'Start recording'}</button>
               )}
+              <button className={`btn h-11 px-5 ${status.longRecording ? 'text-[#ff8aa1] border-[#ff3b5c]/50' : ''}`} onClick={() => void window.cf.buffer.toggleLong()}>
+                <span className={`w-2 h-2 rounded-full ${status.longRecording ? 'bg-[#ff3b5c] shadow-[0_0_8px_#ff3b5c]' : 'bg-[#ff3b5c]/70'}`} />
+                {status.longRecording ? 'Stop long recording' : 'Long recording'}
+                {settings.capture.longRecordHotkey && <Kbd>{settings.capture.longRecordHotkey}</Kbd>}
+              </button>
               <button className="btn h-11 px-5" onClick={() => setPage('rules')}>What to clip</button>
             </div>
           </div>
@@ -112,14 +117,14 @@ export default function Dashboard() {
             <span className="absolute bottom-2 right-2 chip bg-black/70 border-0 text-white tabular">{fmtDuration(best.clip.durationSec)}</span>
           </button>
           <div className="relative z-[2] flex-1 min-w-0 p-6 flex flex-col">
-            <div className="flex items-center gap-2 font-hud text-[10px] font-medium uppercase tracking-[0.18em] text-warn drop-shadow-[0_0_8px_rgba(255,200,87,0.6)]"><Trophy size={14} /> Clip of the day</div>
+            <div className="flex items-center gap-2 font-hud text-[10px] font-medium uppercase tracking-[0.18em] text-warn drop-shadow-[0_0_8px_rgba(255,200,87,0.6)] w-fit cursor-help" title={`Best of today, picked from favorites, hype level, how it was triggered and views. ${settings.discord.dailyDigest.enabled && settings.discord.webhookUrl ? `Posts to Discord at ${settings.discord.dailyDigest.time}.` : `Notification at ${settings.discord.dailyDigest.time}.`}`}><Trophy size={14} /> Clip of the day</div>
             <div className="text-lg font-semibold mt-1.5 truncate">{best.clip.title}</div>
             <div className="text-sm text-ink-3 flex items-center gap-1.5 mt-0.5 min-w-0">
               <GameIcon src={best.clip.gameIcon ? fileUrl(best.clip.gameIcon) : undefined} name={best.clip.game} size={16} />
               <span className="truncate">{best.clip.game} · {timeAgo(best.clip.createdAt)}{best.clip.event ? ` · ${best.clip.event}` : ''}</span>
             </div>
-            <p className="text-xs text-ink-3 mt-2 leading-relaxed">Picked from today's clips by favorites, hype level, how it was triggered and how often you watched it. {settings.discord.dailyDigest.enabled && settings.discord.webhookUrl ? `Posts to Discord at ${settings.discord.dailyDigest.time}.` : `You'll get a notification at ${settings.discord.dailyDigest.time}.`}</p>
-            <div className="flex gap-2 mt-auto pt-3">
+            
+            <div className="flex gap-2 mt-auto pt-4">
               <button className="btn" onClick={() => openClip(best.clip.id)}>Watch</button>
               {settings.discord.webhookUrl ? (
                 <button className="btn bg-[#5865F2] border-[#5865F2] text-white hover:bg-[#4752c4] hover:border-[#4752c4]" disabled={posting} onClick={async () => {

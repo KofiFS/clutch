@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckSquare, Eye, Film, Flame, MessageSquare, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2 } from 'lucide-react'
+import { CheckSquare, Eye, Film, Flame, MessageSquare, Video, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2 } from 'lucide-react'
 import type { Clip, TriggerSource } from '../../../shared/types'
 import { dayLabel, fileUrl, fmtDuration, timeAgo, useStore } from '../lib/store'
 import type { GameSummary } from '../../../shared/types'
 import { Empty, GameIcon, Kbd, useConfirm } from '../components/ui'
 import { useToast } from '../components/Toasts'
 
-const TRIGGER_ICON: Record<TriggerSource, typeof Eye> = { hotkey: Keyboard, vision: Eye, voice: Mic, hype: Flame, manual: MousePointerClick }
-const TRIGGER_LABEL: Record<TriggerSource, string> = { hotkey: 'Hotkey', vision: 'AI', voice: 'Voice', hype: 'Hype', manual: 'Manual' }
+const TRIGGER_ICON: Record<TriggerSource, typeof Eye> = { hotkey: Keyboard, vision: Eye, voice: Mic, hype: Flame, manual: MousePointerClick, long: Video }
+const TRIGGER_LABEL: Record<TriggerSource, string> = { hotkey: 'Hotkey', vision: 'AI', voice: 'Voice', hype: 'Hype', manual: 'Manual', long: 'Long' }
 
 export default function Library() {
   const { libraryVersion, settings, openClip, viewerClipId } = useStore()
@@ -128,7 +128,7 @@ export default function Library() {
           <span className="absolute right-2.5 top-2"><Kbd>/</Kbd></span>
         </div>
         <div className="inline-flex p-1 rounded-[10px] bg-surface-2 border border-line gap-0.5">
-          {(['all', 'hotkey', 'hype', 'voice', 'vision'] as const).map((t) => (
+          {(['all', 'hotkey', 'hype', 'voice', 'vision', 'long'] as const).map((t) => (
             <button key={t} onClick={() => setTrigger(t)} className={`h-8 px-3 rounded-md text-sm font-medium transition-colors ${trigger === t ? 'bg-surface-4 text-ink' : 'text-ink-3 hover:text-ink-2'}`}>{t === 'all' ? 'All' : TRIGGER_LABEL[t]}</button>
           ))}
         </div>

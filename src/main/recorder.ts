@@ -19,6 +19,8 @@ export interface RecorderEvents {
   activity: [ActivityEvent]
   clip: [Clip]
   game: [GameInfo]
+  /** Short confirmation for hotkey actions, shown over the game. */
+  notice: [{ title: string; sub: string; kind: 'clip' | 'info' | 'error' }]
 }
 
 /**
@@ -43,6 +45,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   private starting = false
   private activeCapture: CaptureSettings | null = null
   private pendingRanges: { startMs: number; endMs: number }[] = []
+  private long: { startMs: number; bookmarks: number[]; game: GameInfo } | null = null
 
   constructor(private settings: SettingsStore, dataDir: string) {
     super()
@@ -183,6 +186,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
   async stop(reason: 'manual' | 'auto' = 'manual') {
     if (!this.status.running && !this.buffer.running) return
+    if (this.long) await this.stopLong()
     await this.buffer.stop()
     this.voice.stop()
     this.autoStarted = false
@@ -222,8 +226,8 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       await this.stop('auto')
     }
 
-    // Per-game profile switch while running
-    if (changed && this.status.running && this.activeCapture && info.isGame) {
+    // Per-game profile switch while running (never in the middle of a long recording)
+    if (changed && this.status.running && this.activeCapture && info.isGame && !this.long) {
       const next = this.effectiveCapture()
       const differs = (['fps', 'quality', 'resolutionScale'] as const).some((k) => next[k] !== this.activeCapture![k])
       if (differs) {
@@ -251,6 +255,75 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     const now = Date.now()
     const back = Math.min(seconds ?? c.preSeconds, c.bufferSeconds)
     return this.clipRange(now - back * 1000, now + c.postSeconds * 1000, trigger)
+  }
+
+  get longRecording() {
+    return this.long
+  }
+
+  /** Full-session recording: keep every segment from now until it is stopped, then save one file. */
+  async startLong() {
+    if (this.long) return
+    if (!this.status.running) await this.start('manual')
+    if (!this.buffer.running) {
+      this.emit('notice', { title: 'Could not start recording', sub: 'Check the Home page for details', kind: 'error' })
+      return
+    }
+    const startMs = Date.now()
+    this.long = { startMs, bookmarks: [], game: this.game }
+    this.buffer.holdFromMs = startMs
+    this.status.longRecording = { since: new Date(startMs).toISOString(), bookmarks: 0, game: this.game.name }
+    const keys = this.settings.get().capture
+    this.log('info', `Long recording started${this.game.isGame ? ` in ${this.game.name}` : ''}`)
+    this.emit('notice', { title: 'Long recording started', sub: [keys.bookmarkHotkey && `${keys.bookmarkHotkey} bookmark`, keys.longRecordHotkey && `${keys.longRecordHotkey} stop`].filter(Boolean).join(' · '), kind: 'info' })
+    this.pushStatus()
+  }
+
+  async stopLong(): Promise<Clip | undefined> {
+    const l = this.long
+    if (!l) return
+    this.long = null
+    this.status.longRecording = undefined
+    this.pushStatus()
+    const endMs = Date.now()
+    const mins = Math.round((endMs - l.startMs) / 60000)
+    this.emit('notice', { title: 'Saving long recording…', sub: `${mins < 1 ? 'Under a minute' : `${mins} min`}${l.bookmarks.length ? ` · ${l.bookmarks.length} bookmark${l.bookmarks.length > 1 ? 's' : ''}` : ''}`, kind: 'info' })
+    const c = this.settings.get().capture
+    const safeGame = l.game.name.replace(/[^\w\- ]+/g, '').trim() || 'Recording'
+    const stamp = new Date(l.startMs).toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const outFile = path.join(c.outputDir, safeGame, `${safeGame} Long ${stamp}.mp4`)
+    try {
+      const { file, actualStartMs } = await this.buffer.saveRange({ startMs: l.startMs, endMs, outFile })
+      const bookmarks = l.bookmarks.map((b) => Math.max(0, (b - actualStartMs) / 1000))
+      const clip = await this.library.add(file, { game: l.game.name, gameProcess: l.game.process || undefined, gameIcon: l.game.icon, trigger: 'long', title: `${l.game.isGame ? l.game.name : 'Session'} · ${new Date(l.startMs).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, bookmarks })
+      const len = `${Math.floor(clip.durationSec / 60)}:${String(Math.round(clip.durationSec % 60)).padStart(2, "0")}`
+      this.log('clip', `Saved long recording "${clip.title}" (${len}, ${bookmarks.length} bookmark${bookmarks.length === 1 ? "" : "s"})`, clip.id)
+      this.emit('clip', clip)
+      return clip
+    } catch (e) {
+      this.log('error', `Long recording could not be saved: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      this.buffer.holdFromMs = null
+    }
+  }
+
+  async toggleLong() {
+    return this.long ? this.stopLong() : this.startLong()
+  }
+
+  /** Mark this moment in the running long recording. */
+  bookmark() {
+    const keys = this.settings.get().capture
+    if (!this.long) {
+      this.emit('notice', { title: 'No long recording running', sub: keys.longRecordHotkey ? `Press ${keys.longRecordHotkey} to start one, then bookmark` : 'Start a long recording first', kind: 'info' })
+      return
+    }
+    this.long.bookmarks.push(Date.now())
+    const n = this.long.bookmarks.length
+    const t = Math.round((Date.now() - this.long.startMs) / 1000)
+    this.status.longRecording = { ...this.status.longRecording!, bookmarks: n }
+    this.emit('notice', { title: `Bookmark ${n}`, sub: `at ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} in this recording`, kind: 'clip' })
+    this.pushStatus()
   }
 
   /** Length presets that fit in the current buffer, ascending. */

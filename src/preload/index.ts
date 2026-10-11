@@ -19,7 +19,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate'
 
 const api = {
   settings: {
@@ -35,7 +35,8 @@ const api = {
     health: (): Promise<HealthItem[]> => ipcRenderer.invoke('system:health'),
     testHotkey: (accel: string): Promise<boolean> => ipcRenderer.invoke('system:testHotkey', accel),
     testOverlay: () => ipcRenderer.invoke('system:testOverlay'),
-    canAcrylic: (): Promise<boolean> => ipcRenderer.invoke('system:canAcrylic')
+    canAcrylic: (): Promise<boolean> => ipcRenderer.invoke('system:canAcrylic'),
+    canLaunchAtLogin: (): Promise<boolean> => ipcRenderer.invoke('system:canLaunchAtLogin')
   },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -45,7 +46,9 @@ const api = {
     start: (): Promise<void> => ipcRenderer.invoke('buffer:start'),
     stop: (): Promise<void> => ipcRenderer.invoke('buffer:stop'),
     status: (): Promise<BufferStatus> => ipcRenderer.invoke('buffer:status'),
-    clipNow: (): Promise<Clip | undefined> => ipcRenderer.invoke('clip:now')
+    clipNow: (): Promise<Clip | undefined> => ipcRenderer.invoke('clip:now'),
+    toggleLong: (): Promise<unknown> => ipcRenderer.invoke('long:toggle'),
+    bookmark: (): Promise<void> => ipcRenderer.invoke('bookmark:add')
   },
   activity: { list: (): Promise<ActivityEvent[]> => ipcRenderer.invoke('activity:list') },
   audio: { push: (pcm: ArrayBuffer, levelDb: number) => ipcRenderer.send('audio:push', pcm, levelDb) },

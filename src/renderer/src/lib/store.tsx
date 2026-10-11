@@ -59,6 +59,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }),
       window.cf.on('settings-changed', (s: Settings) => setSettings(s)),
       window.cf.on('open-clip', (id: string) => openClip(id)),
+      window.cf.on('navigate', (p: Page) => { openClip(null); setPage(p) }),
       window.cf.on('clip-of-the-day', (clip: Clip) => {
         toast.push({ kind: 'clip', title: 'Your clip of the day', body: `${clip.title} · ${clip.game}`, action: { label: 'Watch', onClick: () => openClip(clip.id) }, ms: 10000 })
       }),

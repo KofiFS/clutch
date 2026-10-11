@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import type { Clip, TriggerSource } from '../shared/types'
 import type { Library } from './library'
 
-const TRIGGER_WEIGHT: Record<TriggerSource, number> = { vision: 25, hype: 22, hotkey: 15, voice: 10, manual: 8 }
+const TRIGGER_WEIGHT: Record<TriggerSource, number> = { vision: 25, hype: 22, hotkey: 15, voice: 10, manual: 8, long: 0 }
 
 /**
  * "How good is this clip?" without any AI: what you did with it (favorite, tags, views),
@@ -31,12 +31,12 @@ export function clipOfTheDay(library: Library, day = new Date()): { clip: Clip; 
   const key = dayKey(day)
   const ranked = library
     .all()
-    .filter((c) => dayKey(new Date(c.createdAt)) === key && c.game !== 'Desktop')
+    .filter((c) => dayKey(new Date(c.createdAt)) === key && c.game !== 'Desktop' && c.trigger !== 'long')
     .map((clip) => ({ clip, score: scoreClip(clip) }))
     .sort((a, b) => b.score - a.score)
   // Fall back to desktop clips only if nothing else exists that day.
   if (ranked.length) return ranked[0]
-  const any = library.all().filter((c) => dayKey(new Date(c.createdAt)) === key).map((clip) => ({ clip, score: scoreClip(clip) })).sort((a, b) => b.score - a.score)
+  const any = library.all().filter((c) => dayKey(new Date(c.createdAt)) === key && c.trigger !== 'long').map((clip) => ({ clip, score: scoreClip(clip) })).sort((a, b) => b.score - a.score)
   return any[0]
 }
 

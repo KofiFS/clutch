@@ -123,6 +123,20 @@ export default function Settings() {
               <HotkeyInput value={c.clipHotkey} onChange={(clipHotkey) => void setCap({ clipHotkey })} status={hotkeyStatus} />
             </Field>
             <InGameLength />
+            <div className="card-2 p-4 space-y-3">
+              <div>
+                <div className="text-sm font-semibold">Long recording & bookmarks</div>
+                <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">Record a whole session, like NVIDIA's Record. Press the bookmark key whenever something happens; later, open the recording and turn each bookmark into a clip with one click.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Start / stop">
+                  <HotkeyInput compact value={c.longRecordHotkey} onChange={(longRecordHotkey) => void setCap({ longRecordHotkey })} />
+                </Field>
+                <Field label="Bookmark">
+                  <HotkeyInput compact value={c.bookmarkHotkey} onChange={(bookmarkHotkey) => void setCap({ bookmarkHotkey })} />
+                </Field>
+              </div>
+            </div>
           </div>
           <div className="space-y-3">
             <Toggle checked={a.autoStart === 'games'} onChange={(on) => void setApp({ autoStart: on ? 'games' : 'off' })} label="Start recording when a game opens" hint="Games are detected by their install folder (Steam, Epic, Xbox…) or a fullscreen window." />
@@ -163,6 +177,7 @@ export default function Settings() {
           <Toggle checked={a.clipSound} onChange={(clipSound) => void setApp({ clipSound })} label="Play a chime when a clip is saved" />
           <Toggle checked={a.minimizeToTray} onChange={(minimizeToTray) => void setApp({ minimizeToTray })} label="Keep running in the tray when closed" hint="Recording and hotkeys keep working. Quit from the tray icon." />
           <Toggle checked={a.startMinimized} onChange={(startMinimized) => void setApp({ startMinimized })} label="Start minimized to the tray" />
+          <StartWithWindows />
           <Toggle checked={a.useTrash} onChange={(useTrash) => void setApp({ useTrash })} label="Keep deleted clips in the trash for 30 days" hint="Lets you undo a delete." />
         </div>
       </Section>
@@ -421,5 +436,20 @@ function InGameLength() {
       </div>
       {presets.some((n) => n > c.bufferSeconds) && <p className="text-[11px] text-ink-3">Lengths over {c.bufferSeconds}s are greyed out. Raise “Keep the last” above to unlock them.</p>}
     </div>
+  )
+}
+
+function StartWithWindows() {
+  const { settings, save } = useStore()
+  const [available, setAvailable] = useState<boolean | null>(null)
+  useEffect(() => { void window.cf.system.canLaunchAtLogin().then(setAvailable) }, [])
+  if (!settings) return null
+  return (
+    <Toggle
+      checked={settings.app.launchAtLogin}
+      onChange={(launchAtLogin) => void save({ app: { ...settings.app, launchAtLogin } })}
+      label="Start with Windows"
+      hint={available === false ? 'Takes effect in the installed app (npm run dist). Saved for then.' : 'Opens hidden in the tray when you sign in, like Medal, so it is ready before your first game.'}
+    />
   )
 }

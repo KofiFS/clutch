@@ -30,6 +30,10 @@ export interface CaptureSettings {
   lengthDownHotkey: string
   /** Steps the length hotkeys move through (seconds). */
   lengthPresets: number[]
+  /** Start/stop a full-session recording (NVIDIA-style). */
+  longRecordHotkey: string
+  /** Mark a moment during a long recording (Medal-style). */
+  bookmarkHotkey: string
 }
 
 /** Per-game overrides of the capture settings. Keyed by lower-case process name. */
@@ -130,6 +134,10 @@ export interface AppBehavior {
   effects: 'full' | 'lite'
   /** Windows 11 acrylic: the desktop shows through the window, frosted. */
   windowGlass: boolean
+  /** Launch hidden in the tray when Windows starts. */
+  launchAtLogin: boolean
+  /** The "still running in the tray" notice was shown once. */
+  trayHintShown: boolean
 }
 
 export interface Settings {
@@ -150,7 +158,7 @@ export interface Settings {
   startBufferOnLaunch: boolean
 }
 
-export type TriggerSource = 'hotkey' | 'vision' | 'voice' | 'hype' | 'manual'
+export type TriggerSource = 'hotkey' | 'vision' | 'voice' | 'hype' | 'manual' | 'long'
 
 export interface Clip {
   id: string
@@ -182,6 +190,8 @@ export interface Clip {
   discordPosts?: string[]
   /** Times the clip was opened in the viewer. */
   views?: number
+  /** Bookmarked moments in a long recording, seconds from the start. */
+  bookmarks?: number[]
 }
 
 export interface UploadRecord {
@@ -228,6 +238,8 @@ export interface BufferStatus {
   /** Seconds currently available in the buffer. */
   bufferedSeconds?: number
   talking?: boolean
+  /** Set while a long (full-session) recording is running. */
+  longRecording?: { since: string; bookmarks: number; game: string }
 }
 
 export interface ActivityEvent {
@@ -266,7 +278,9 @@ export const DEFAULT_SETTINGS: Settings = {
     extraHotkeys: [],
     lengthUpHotkey: 'Alt+PageUp',
     lengthDownHotkey: 'Alt+PageDown',
-    lengthPresets: [10, 20, 30, 60, 120]
+    lengthPresets: [10, 20, 30, 60, 120],
+    longRecordHotkey: 'Alt+F9',
+    bookmarkHotkey: 'Alt+F8'
   },
   vision: {
     enabled: false,
@@ -308,7 +322,9 @@ export const DEFAULT_SETTINGS: Settings = {
     autoStopMinutes: 5,
     useTrash: true,
     effects: 'full',
-    windowGlass: false
+    windowGlass: false,
+    launchAtLogin: false,
+    trayHintShown: false
   },
   blocklist: [],
   allowlist: [],

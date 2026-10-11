@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
-import { Film, LayoutDashboard, Settings as SettingsIcon, Sparkles, UploadCloud, Zap } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Film, LayoutDashboard, Play, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
 import { StoreProvider, useStore, type Page } from './lib/store'
 import { ToastProvider } from './components/Toasts'
 import { GameIcon, Kbd } from './components/ui'
+import type { ReactNode } from 'react'
 import { ClipViewer } from './components/ClipViewer'
 import { Backdrop } from './components/Backdrop'
 import Dashboard from './pages/Dashboard'
@@ -20,13 +21,75 @@ const NAV: { id: Page; label: string; icon: typeof Film; key: string }[] = [
   { id: 'settings', label: 'Settings', icon: SettingsIcon, key: '5' }
 ]
 
+/** Medal-style status strip: what Clutch is doing right now and the keys that matter. */
+function StatusStrip() {
+  const { status, settings, game } = useStore()
+  const [, tick] = useState(0)
+  const long = status.longRecording
+  useEffect(() => {
+    if (!long) return
+    const id = setInterval(() => tick((n) => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [long])
+  if (!settings) return null
+  const c = settings.capture
+  const elapsed = long ? Math.floor((Date.now() - Date.parse(long.since)) / 1000) : 0
+  const hms = `${Math.floor(elapsed / 3600) ? `${Math.floor(elapsed / 3600)}:` : ''}${String(Math.floor((elapsed % 3600) / 60)).padStart(Math.floor(elapsed / 3600) ? 2 : 1, '0')}:${String(elapsed % 60).padStart(2, '0')}`
+  const state = long ? `Long recording ${hms}` : status.running ? `Recording${game?.isGame ? ` · ${game.name}` : ''}` : status.starting ? 'Starting…' : 'Waiting for game'
+  const Key = ({ k, label, onClick, active }: { k: string; label: string; onClick?: () => void; active?: boolean }) =>
+    k ? (
+      <button onClick={onClick} className={`no-drag flex items-center gap-1.5 h-7 px-2 rounded-full text-[12px] transition-colors ${active ? 'text-ink bg-white/10' : 'text-ink-2 hover:text-ink hover:bg-white/[0.07]'}`}>
+        {k.split('+').map((p) => <kbd key={p} className="kbd h-5 min-w-5 text-[9px]">{p}</kbd>)}
+        <span>{label}</span>
+      </button>
+    ) : null
+  return (
+    <div className="flex items-center gap-1 ml-6 min-w-0">
+      <span className={`flex items-center gap-2 h-7 px-3 rounded-full text-[12px] font-medium shrink-0 ${long ? 'text-[#ff8aa1] bg-[#ff3b5c]/12' : status.running ? 'text-live bg-live/10' : 'text-ink-2 bg-white/[0.05]'}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${long ? 'bg-[#ff3b5c] shadow-[0_0_8px_#ff3b5c]' : status.running ? 'bg-live shadow-[0_0_8px_#4fe3ff]' : 'bg-ink-3'}`} />
+        <span className="tabular">{state}</span>
+        {long && long.bookmarks > 0 && <span className="text-ink-3">· {long.bookmarks} bookmark{long.bookmarks > 1 ? 's' : ''}</span>}
+      </span>
+      <Key k={c.clipHotkey} label="Clip" onClick={() => void window.cf.buffer.clipNow()} />
+      <Key k={c.longRecordHotkey} label={long ? 'Stop long recording' : 'Long recording'} active={!!long} onClick={() => void window.cf.buffer.toggleLong()} />
+      {long && <Key k={c.bookmarkHotkey} label="Bookmark" onClick={() => void window.cf.buffer.bookmark()} />}
+    </div>
+  )
+}
+
 function TitleBar({ live }: { live: boolean }) {
   return (
     <div className="drag h-11 shrink-0 flex items-center px-5 gap-2.5 select-none relative z-10">
       <img src="./icon.png" alt="" className="w-6 h-6" style={{ filter: "drop-shadow(0 0 8px rgba(40,140,255,0.7))" }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
       <span className="font-hud text-[12px] font-bold tracking-[0.3em]">CLUTCH</span>
       <span className="font-hud text-[9px] text-ink-3 tracking-[0.2em] mt-px">BETA</span>
-      {live && <span className="font-hud text-[9px] tracking-[0.2em] text-live ml-3 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-live pulse-dot" />REC</span>}
+      <StatusStrip />
+      {live && <span className="sr-only">Recording</span>}
+    </div>
+  )
+}
+
+/** Icon-only rail button with a glass tooltip to the right (label is also the accessible name). */
+function RailButton({ label, hint, onClick, active, variant, disabled, children }: { label: string; hint?: string; onClick: () => void; active?: boolean; variant?: 'primary' | 'live'; disabled?: boolean; children: ReactNode }) {
+  const base = variant === 'primary' ? 'btn-primary' : variant === 'live' ? 'btn-live' : ''
+  return (
+    <div className="relative group">
+      <button
+        aria-label={label}
+        aria-current={active ? 'page' : undefined}
+        disabled={disabled}
+        onClick={onClick}
+        className={`grid place-items-center w-12 h-12 rounded-2xl transition-all duration-200 ${base ? `${base} !px-0 !h-12 !rounded-2xl` : active ? 'liquid' : 'hover:bg-white/[0.07]'}`}
+        style={active && !base ? { background: 'linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06))', boxShadow: 'inset 0 1px 0.5px rgba(255,255,255,0.55), inset 0 -1px 0.5px rgba(255,255,255,0.08), 0 8px 24px -12px rgba(0,0,0,0.8), 0 0 22px -8px rgba(79,227,255,0.7)' } : undefined}
+      >
+        {children}
+      </button>
+      <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50 whitespace-nowrap opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 transition-all duration-150">
+        <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[13px] font-medium border border-white/15 backdrop-blur-xl shadow-[var(--shadow-pop)]" style={{ background: "rgba(8,14,28,0.92)", boxShadow: "inset 0 1px 0.5px rgba(255,255,255,0.25), 0 12px 30px -10px rgba(0,0,0,0.9)" }}>
+          {label}
+          {hint && <span className="text-ink-3 text-xs font-normal">{hint}</span>}
+        </span>
+      </span>
     </div>
   )
 }
@@ -60,54 +123,43 @@ function Shell() {
       <Backdrop live={live} />
       <TitleBar live={live} />
       <div className="flex-1 flex min-h-0 px-3 pb-3 gap-3">
-        <aside className="card w-[236px] shrink-0 flex flex-col">
-          <nav className="relative z-[2] p-3 space-y-1">
+        <aside className="card relative z-30 w-[76px] shrink-0 flex flex-col items-center py-3">
+          <nav className="relative z-[2] flex flex-col items-center gap-1.5" aria-label="Main">
             {NAV.map(({ id, label, icon: Icon, key }) => {
               const active = page === id
               return (
-                <button
-                  key={id}
-                  onClick={() => setPage(id)}
-                  aria-current={active ? 'page' : undefined}
-                  className={`relative w-full flex items-center gap-3 h-11 px-3.5 rounded-full text-sm font-medium transition-all duration-200 group ${active ? 'text-ink liquid' : 'text-ink-2 hover:text-ink hover:bg-white/[0.06]'}`}
-                  style={active ? { background: 'linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06))', boxShadow: 'inset 0 1px 0.5px rgba(255,255,255,0.55), inset 0 -1px 0.5px rgba(255,255,255,0.08), 0 8px 24px -12px rgba(0,0,0,0.8), 0 0 22px -8px rgba(79,227,255,0.7)' } : undefined}
-                >
-                  <Icon size={17} className={active ? 'text-accent drop-shadow-[0_0_6px_rgba(79,227,255,0.9)]' : 'text-ink-3 group-hover:text-ink-2'} />
-                  <span className="flex-1 text-left">{label}</span>
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity"><Kbd>⌃{key}</Kbd></span>
-                </button>
+                <RailButton key={id} label={label} hint={`Ctrl+${key}`} onClick={() => setPage(id)} active={active}>
+                  <Icon size={20} className={active ? 'text-accent drop-shadow-[0_0_6px_rgba(79,227,255,0.9)]' : 'text-ink-2 group-hover:text-ink'} />
+                </RailButton>
               )
             })}
           </nav>
 
-          <div className="relative z-[2] mt-auto p-3 space-y-2.5">
-            <div className={`card-2 p-3.5 space-y-2.5 transition-shadow ${live ? 'shadow-[0_0_30px_-10px_rgba(79,227,255,0.7)]' : ''}`}>
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${live ? 'bg-live pulse-dot text-live shadow-[0_0_8px_#4fe3ff]' : status.starting ? 'bg-warn' : 'bg-ink-3/50'}`} />
-                <span className="font-hud text-[10px] font-medium tracking-[0.16em] uppercase">{live ? 'Recording' : status.starting ? 'Starting' : 'Standby'}</span>
-                {live && status.bufferedSeconds !== undefined && <span className="ml-auto font-hud text-[10px] tabular text-ink-2">{Math.min(status.bufferedSeconds, settings.capture.bufferSeconds)}s</span>}
-              </div>
-              {game && (
-                <div className="flex items-center gap-2 text-xs text-ink-2 min-w-0">
-                  <GameIcon src={game.icon ? `cf://file/${encodeURIComponent(game.icon.replace(/\\/g, '/'))}` : undefined} name={game.name} size={18} />
-                  <span className="truncate">{game.name}</span>
-                  {game.isGame && <span className="ml-auto font-hud text-[9px] tracking-[0.16em] text-live">GAME</span>}
-                </div>
-              )}
-              {status.recordingBlocked && <div className="text-[11px] text-warn leading-snug">{status.recordingBlocked}</div>}
-            </div>
+          <div className="relative z-[2] mt-auto flex flex-col items-center gap-2.5">
+            {/* Status orb: the current app/game, ringed by recording state */}
+            <RailButton
+              label={live ? `Recording${game ? ` · ${game.name}` : ''}` : status.starting ? 'Starting…' : `Standby${game ? ` · ${game.name}` : ''}`}
+              hint={live && status.bufferedSeconds !== undefined ? `${Math.min(status.bufferedSeconds, settings.capture.bufferSeconds)}s ready to clip` : status.recordingBlocked}
+              onClick={() => setPage('dashboard')}
+            >
+              <span className={`relative grid place-items-center w-9 h-9 rounded-full ${live ? 'ring-2 ring-live shadow-[0_0_14px_-2px_#4fe3ff]' : status.starting ? 'ring-2 ring-warn' : 'ring-1 ring-white/15'}`}>
+                {game ? <GameIcon src={game.icon ? `cf://file/${encodeURIComponent(game.icon.replace(/\\/g, '/'))}` : undefined} name={game.name} size={22} /> : <span className="w-2 h-2 rounded-full bg-ink-3" />}
+                {status.recordingBlocked && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-warn ring-2 ring-[#060a14]" />}
+              </span>
+            </RailButton>
             {live ? (
               <>
-                <button className="btn-live w-full h-11" onClick={() => void clipNow()}>
-                  <Zap size={16} /> Clip now
-                  {settings.capture.clipHotkey && <Kbd>{settings.capture.clipHotkey}</Kbd>}
-                </button>
-                <button className="btn w-full" onClick={() => void stop()}>Stop recording</button>
+                <RailButton label="Clip now" hint={settings.capture.clipHotkey || undefined} onClick={() => void clipNow()} variant="live">
+                  <Zap size={20} />
+                </RailButton>
+                <RailButton label="Stop recording" onClick={() => void stop()}>
+                  <Square size={16} className="text-ink-2 group-hover:text-ink" />
+                </RailButton>
               </>
             ) : (
-              <button className="btn-primary w-full h-11" disabled={status.starting} onClick={() => void start()}>
-                {status.starting ? 'Starting…' : 'Start recording'}
-              </button>
+              <RailButton label={status.starting ? 'Starting…' : 'Start recording'} onClick={() => void start()} variant="primary" disabled={status.starting}>
+                <Play size={20} className="ml-0.5" />
+              </RailButton>
             )}
           </div>
         </aside>

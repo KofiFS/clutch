@@ -183,6 +183,15 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                   <div className="absolute top-0 bottom-0 w-3 -ml-1.5 bg-live rounded-r-md cursor-ew-resize z-10 grid place-items-center" style={{ left: `${pct(trim.end)}%` }} onPointerDown={(e) => { e.stopPropagation(); onPointerDown(e, 'end') }} title="Trim end (O)"><span className="w-0.5 h-4 bg-black/50" /></div>
                 </>
               )}
+              {(clip.bookmarks ?? []).map((b, i) => (
+                <button
+                  key={i}
+                  title={`Bookmark ${i + 1} · ${fmtTime(b)}`}
+                  onPointerDown={(e) => { e.stopPropagation(); seek(b) }}
+                  className="absolute top-1 w-3 h-3 -ml-1.5 rotate-45 rounded-[3px] z-10 bg-[#ffc857] shadow-[0_0_8px_#ffc857] hover:scale-125 transition-transform"
+                  style={{ left: `${pct(b)}%` }}
+                />
+              ))}
               <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_10px_#4fe3ff,0_0_4px_#fff] pointer-events-none" style={{ left: `${pct(time)}%` }} />
             </div>
             <div className="flex items-center gap-2">
@@ -226,6 +235,43 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                   <dt className="text-ink-3">File</dt><dd className="tabular">{fmtBytes(clip.sizeBytes)}</dd>
                   <dt className="text-ink-3">Trigger</dt><dd className="capitalize">{clip.trigger}{clip.event ? ` · ${clip.event}` : ''}</dd>
                 </dl>
+                {(clip.bookmarks?.length ?? 0) > 0 && (
+                  <div>
+                    <span className="label">Bookmarks</span>
+                    <ul className="space-y-1.5">
+                      {clip.bookmarks!.map((b, i) => (
+                        <li key={i} className="flex items-center gap-2 text-sm">
+                          <span className="w-2.5 h-2.5 rotate-45 rounded-[2px] bg-[#ffc857] shrink-0" />
+                          <button className="font-hud text-[12px] tabular hover:text-accent" onClick={() => seek(b)}>{fmtTime(b)}</button>
+                          <span className="flex-1" />
+                          <button
+                            className="btn-sm"
+                            disabled={busy}
+                            title={`Save ${settings?.capture.preSeconds ?? 20}s before and ${settings?.capture.postSeconds ?? 5}s after as a new clip`}
+                            onClick={async () => {
+                              const pre = settings?.capture.preSeconds ?? 20
+                              const post = Math.max(3, settings?.capture.postSeconds ?? 5)
+                              setBusy(true)
+                              try {
+                                const out = await window.cf.library.trim(clip.id, Math.max(0, b - pre), Math.min(duration || clip.durationSec, b + post), 'new')
+                                if (out) {
+                                  await window.cf.library.update(out.id, { title: `${clip.game === 'Desktop' ? 'Moment' : clip.game} · bookmark ${i + 1}` })
+                                  toast.push({ kind: 'success', title: `Bookmark ${i + 1} saved as a clip`, action: { label: 'Open', onClick: () => openClip(out.id) } })
+                                }
+                              } catch (e) {
+                                toast.push({ kind: 'error', title: 'Could not make the clip', body: String((e as Error)?.message ?? e) })
+                              } finally {
+                                setBusy(false)
+                              }
+                            }}
+                          >
+                            Make clip
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <div>
                   <span className="label">Tags</span>
                   <TagEditor value={clip.tags} onChange={(tags) => void window.cf.library.update(clip.id, { tags })} />

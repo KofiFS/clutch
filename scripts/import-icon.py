@@ -75,6 +75,12 @@ master.resize((256, 256), Image.LANCZOS).save(out / 'icon-256.png')
 # Small sizes get a touch of sharpening so the play triangle stays readable in the tray.
 small = master.resize((32, 32), Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=1, percent=60, threshold=2))
 small.save(out / 'icon-32.png')
+# Tray variant while recording: red dot with a dark ring in the bottom-right corner.
+rec = small.copy()
+d = ImageDraw.Draw(rec)
+d.ellipse([18, 18, 31, 31], fill=(10, 12, 20, 255))
+d.ellipse([20, 20, 29, 29], fill=(255, 59, 92, 255))
+rec.save(out / 'icon-32-rec.png')
 master.save(out / 'icon.ico', sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
 renderer = Path('src/renderer/public')

@@ -15,6 +15,9 @@ A Medal-style game clip recorder for Windows that you can *tell what to clip*.
 - **YouTube uploads** (your own OAuth app) now or scheduled, plus a daily schedule that drip-feeds your favorite clips.
 - **Desktop polish**: first-run wizard, system tray, on-screen "Clipped!" overlay, chime, health check, frameless window.
 - **Change clip length in game**: Alt+PageUp / Alt+PageDown step through 10 s, 20 s, 30 s, 1 min, 2 min with an on-screen confirmation, extra clip hotkeys can each have their own length (e.g. Shift+F8 = 1 min), and the tray has a Clip length menu.
+- **Long recording + bookmarks** (NVIDIA Record meets Medal bookmarks): Alt+F9 records a whole session, Alt+F8 bookmarks moments, and each bookmark becomes a clip with one click in the viewer.
+- **Lives in the system tray** like Medal: red dot while recording, full control menu (record, long recording, bookmark, clip length, pages), optional Start with Windows (installed app), a one-time notice when the window is closed.
+- **Medal-style status strip** in the title bar (state + hotkeys) and an icon-only side rail with tooltips.
 - **Liquid HUD design**: liquid-glass panels (iOS 26 / One UI style) with a light sci-fi HUD layer, optional Windows 11 acrylic see-through window, and a Lite mode with no blur.
 
 ## Requirements
