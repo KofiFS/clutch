@@ -56,7 +56,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
       <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-accent to-live grid place-items-center shadow-[var(--shadow-glow)] mb-5">
         <Sparkles className="text-white" size={28} />
       </div>
-      <h1 className="text-2xl font-semibold">Welcome to ClipForge</h1>
+      <h1 className="text-2xl font-semibold">Welcome to Clutch</h1>
       <p className="text-ink-2 mt-2 leading-relaxed max-w-md mx-auto">
         It keeps the last few minutes of your game ready, so you can save a clip after the moment happens. Tell it what to look for and it clips for you.
       </p>

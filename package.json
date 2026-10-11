@@ -1,7 +1,7 @@
 {
   "name": "clipforge",
   "version": "0.1.0",
-  "description": "Smart game clip recorder: tell it what to clip, pick quality, auto-upload on a schedule.",
+  "description": "Clutch - a smart game clip recorder: tell it what to clip, pick quality, share to Discord and YouTube.",
   "main": "./out/main/index.js",
   "author": "iceko",
   "private": true,
@@ -36,8 +36,8 @@
     "vite": "^6.3.0"
   },
   "build": {
-    "appId": "com.iceko.clipforge",
-    "productName": "ClipForge",
+    "appId": "com.iceko.clutch",
+    "productName": "Clutch",
     "directories": {
       "output": "release"
     },
@@ -49,7 +49,18 @@
     "win": {
       "target": [
         "nsis"
-      ]
-    }
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "icon*.png",
+          "icon.ico"
+        ]
+      }
+    ]
   }
 }

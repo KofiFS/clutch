@@ -22,7 +22,7 @@ export class AppTray {
 
   constructor(private actions: TrayActions) {
     this.tray = new Tray(nativeImage.createFromPath(iconPath(32)))
-    this.tray.setToolTip('ClipForge')
+    this.tray.setToolTip('Clutch')
     this.tray.on('click', () => actions.show())
     this.tray.on('double-click', () => actions.show())
     this.refresh()
@@ -35,12 +35,12 @@ export class AppTray {
     const running = status?.running ?? this.last?.running ?? this.actions.isRunning()
     const game = status?.game ?? this.last?.game
     const { options, current } = this.actions.lengths()
-    this.tray.setToolTip(running ? `ClipForge - recording ${game ?? ''}`.trim() : 'ClipForge - idle')
+    this.tray.setToolTip(running ? `Clutch - recording ${game ?? ''}`.trim() : 'Clutch - idle')
     this.tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: running ? `Recording ${game ?? ''}`.trim() : 'Not recording', enabled: false },
         { type: 'separator' },
-        { label: 'Open ClipForge', click: () => this.actions.show() },
+        { label: 'Open Clutch', click: () => this.actions.show() },
         { label: running ? 'Stop recording' : 'Start recording', click: () => this.actions.startStop() },
         { label: 'Clip now', enabled: running, click: () => this.actions.clipNow() },
         {

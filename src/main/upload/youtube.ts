@@ -73,7 +73,7 @@ export class YouTubeUploader {
         const c = u.searchParams.get('code')
         const err = u.searchParams.get('error')
         res.setHeader('Content-Type', 'text/html')
-        res.end(`<html><body style="font-family:sans-serif;background:#0f1115;color:#eee;display:grid;place-items:center;height:100vh"><h2>${c ? 'ClipForge is connected to YouTube. You can close this tab.' : 'Sign-in failed: ' + err}</h2></body></html>`)
+        res.end(`<html><body style="font-family:sans-serif;background:#0f1115;color:#eee;display:grid;place-items:center;height:100vh"><h2>${c ? 'Clutch is connected to YouTube. You can close this tab.' : 'Sign-in failed: ' + err}</h2></body></html>`)
         clearTimeout(timeout)
         server.close()
         c ? resolve(c) : reject(new Error(err ?? 'No code returned'))

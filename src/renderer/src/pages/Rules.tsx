@@ -73,7 +73,7 @@ export default function Rules() {
       <Section
         title="Watch the screen for moments"
         icon={<Eye size={16} />}
-        desc="Describe in plain English what you want clipped: kills, goals, wins. A screenshot is checked every few seconds and a clip is saved when the on-screen evidence matches. When this is off, ClipForge takes no screenshots at all."
+        desc="Describe in plain English what you want clipped: kills, goals, wins. A screenshot is checked every few seconds and a clip is saved when the on-screen evidence matches. When this is off, Clutch takes no screenshots at all."
         right={<div className="flex items-center gap-3"><Badge tone="accent"><Sparkles size={11} /> Optional AI</Badge><Toggle size="lg" checked={v.enabled} onChange={(enabled) => void setVision({ enabled })} label={v.enabled ? 'On' : 'Off'} /></div>}
       >
         {!hasKey && (

@@ -14,6 +14,12 @@ import { SettingsStore } from './settings'
 import { AppTray, iconPath } from './tray'
 import { UploadScheduler, type EnqueueOptions } from './upload/scheduler'
 
+// The app is called Clutch, but its data (settings, clip index, thumbnails) predates the rename and
+// stores absolute paths, so keep the original data folder instead of moving it.
+app.setName('Clutch')
+app.setPath('userData', path.join(app.getPath('appData'), 'clipforge'))
+if (process.platform === 'win32') app.setAppUserModelId('com.iceko.clutch')
+
 // Serve local clip files and thumbnails to the renderer through a dedicated scheme.
 protocol.registerSchemesAsPrivileged([{ scheme: 'cf', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true } }])
 
@@ -47,7 +53,7 @@ function createWindow() {
     titleBarStyle: 'hidden',
     titleBarOverlay: TITLEBAR,
     icon: nativeImage.createFromPath(iconPath(256)),
-    title: 'ClipForge',
+    title: 'Clutch',
     webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true }
   })
   win.once('ready-to-show', () => { if (!settings.get().app.startMinimized) win?.show() })

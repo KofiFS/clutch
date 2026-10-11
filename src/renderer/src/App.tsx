@@ -23,8 +23,8 @@ const NAV: { id: Page; label: string; icon: typeof Film; key: string }[] = [
 function TitleBar({ live }: { live: boolean }) {
   return (
     <div className="drag h-11 shrink-0 flex items-center px-5 gap-2.5 select-none relative z-10">
-      <img src="./icon.png" alt="" className="w-5 h-5 rounded-md" style={{ boxShadow: '0 0 12px rgba(79,227,255,0.6)' }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
-      <span className="font-hud text-[12px] font-bold tracking-[0.22em]">CLIPFORGE</span>
+      <img src="./icon.png" alt="" className="w-6 h-6" style={{ filter: "drop-shadow(0 0 8px rgba(40,140,255,0.7))" }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
+      <span className="font-hud text-[12px] font-bold tracking-[0.3em]">CLUTCH</span>
       <span className="font-hud text-[9px] text-ink-3 tracking-[0.2em] mt-px">BETA</span>
       {live && <span className="font-hud text-[9px] tracking-[0.2em] text-live ml-3 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-live pulse-dot" />REC</span>}
     </div>

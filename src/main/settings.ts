@@ -13,7 +13,7 @@ export class SettingsStore {
     this.file = path.join(app.getPath('userData'), 'settings.json')
     this.data = this.load()
     if (!this.data.capture.outputDir) {
-      this.data.capture.outputDir = path.join(app.getPath('videos'), 'ClipForge')
+      this.data.capture.outputDir = path.join(app.getPath('videos'), 'Clutch')
     }
   }
 

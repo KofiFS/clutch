@@ -129,7 +129,7 @@ export default function Settings() {
             {a.autoStart === 'games' && (
               <Slider label="Stop after the game closes" value={a.autoStopMinutes} min={0} max={30} step={1} format={(n) => (n === 0 ? 'never' : `${n} min`)} onChange={(autoStopMinutes) => void setApp({ autoStopMinutes })} />
             )}
-            <Toggle checked={settings.startBufferOnLaunch} onChange={(v) => void save({ startBufferOnLaunch: v })} label="Start recording when ClipForge opens" />
+            <Toggle checked={settings.startBufferOnLaunch} onChange={(v) => void save({ startBufferOnLaunch: v })} label="Start recording when Clutch opens" />
           </div>
         </div>
       </Section>
@@ -169,7 +169,7 @@ export default function Settings() {
 
       <DiscordSettings />
 
-      <Section title="AI" icon={<KeyRound size={16} />} desc="Everything in ClipForge works without AI. Add a key to unlock screen watching and auto-titles. Your key stays on this PC." right={<Badge tone="accent"><Sparkles size={11} /> Optional</Badge>}>
+      <Section title="AI" icon={<KeyRound size={16} />} desc="Everything in Clutch works without AI. Add a key to unlock screen watching and auto-titles. Your key stays on this PC." right={<Badge tone="accent"><Sparkles size={11} /> Optional</Badge>}>
         <div className="grid grid-cols-3 gap-5">
           <div className="col-span-2">
             <Field label="Anthropic API key" hint="console.anthropic.com → API keys. Screenshots are only sent while the trigger is on.">
@@ -291,7 +291,7 @@ function DiscordSettings() {
   }
 
   return (
-    <Section title="Discord" icon={<MessageSquare size={16} />} desc="Post clips straight into a channel, and let ClipForge share your clip of the day. Uses a channel webhook: no bot, no login.">
+    <Section title="Discord" icon={<MessageSquare size={16} />} desc="Post clips straight into a channel, and let Clutch share your clip of the day. Uses a channel webhook: no bot, no login.">
       <div className="space-y-2">
         <Field label="Channel webhook URL" hint="In Discord: channel ⚙ Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL.">
           <div className="flex gap-2">

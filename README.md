@@ -1,4 +1,4 @@
-# ClipForge
+# Clutch
 
 A Medal-style game clip recorder for Windows that you can *tell what to clip*.
 
@@ -31,7 +31,7 @@ npm run build
 npx electron .
 ```
 
-`npm run dev` starts it with hot reload. `npm run dist` makes an installer under `release/` (bundle ffmpeg first, see above). `node scripts/make-icon.mjs` regenerates the app icon.
+`npm run dev` starts it with hot reload. `npm run dist` makes an installer under `release/` (bundle ffmpeg first, see above). `python scripts/import-icon.py resources/logo-source.webp resources` rebuilds every icon size (and the .ico) from the logo.
 
 ## AI is optional
 
@@ -47,8 +47,8 @@ Measured on this PC (RTX 5090, 5120x1440 @ 60 fps, HEVC NVENC, window hidden in 
 | Process | CPU (share of one core) | RAM |
 |---|---|---|
 | FFmpeg (capture + encode) | ~3% | ~190 MB |
-| ClipForge (Electron, hidden) | ~1.6% | ~650 MB |
-| ClipForge window open while recording (Liquid glass) | ~5% GPU process + ~5% window | |
+| Clutch (Electron, hidden) | ~1.6% | ~650 MB |
+| Clutch window open while recording (Liquid glass) | ~5% GPU process + ~5% window | |
 
 Frames stay on the GPU from capture to encoder. Game detection uses one long-lived PowerShell helper instead of spawning a process every few seconds. Nothing animates forever inside a glass panel: an infinite animation under backdrop-filter made the GPU re-blur the panel every frame (about one full core), so status dots pulse three times and then hold a steady glow. The wallpaper behind the glass is static for the same reason.
 
@@ -93,7 +93,7 @@ Library: `/` search · `Ctrl+A` select all · `Delete` trash selection · `Shift
 ## Discord
 
 1. In Discord: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.
-2. ClipForge → Settings → Discord → paste → Save & test. Testing reads the webhook's name and posts nothing.
+2. Clutch → Settings → Discord → paste → Save & test. Testing reads the webhook's name and posts nothing.
 3. Post from a clip's Share tab, the bulk bar in Clips, or the Clip of the day card. Turn on "Post my clip of the day" to have it posted daily.
 
 Only `discord.com` webhook URLs are accepted.
@@ -133,5 +133,5 @@ src/renderer/          React + Tailwind UI
 src/shared/types.ts    settings + clip types shared by both sides
 ```
 
-Data lives in `%APPDATA%\clipforge\` (settings, index, thumbnails, icons, buffer) and clips in `Videos\ClipForge\<game>\`
-(deleted clips go to `Videos\ClipForge\.trash` for 30 days).
+Data lives in `%APPDATA%\clipforge\` (settings, index, thumbnails, icons, buffer; the folder keeps its pre-rename name) and clips in `Videos\Clutch\<game>\` for new installs
+(deleted clips go to a `.trash` folder next to them for 30 days).

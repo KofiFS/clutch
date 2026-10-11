@@ -100,7 +100,7 @@ export async function postClip(o: PostOptions): Promise<{ messageId: string; cha
     ...(o.clip.event ? [{ name: 'Moment', value: o.clip.event, inline: true }] : [])
   ]
   const payload = {
-    username: 'ClipForge',
+    username: 'Clutch',
     content: [o.mention, o.heading].filter(Boolean).join(' ') || undefined,
     allowed_mentions: { parse: o.mention?.includes('@everyone') || o.mention?.includes('@here') ? ['everyone'] : [] },
     embeds: [
@@ -110,7 +110,7 @@ export async function postClip(o: PostOptions): Promise<{ messageId: string; cha
         color: 0x8b6cff,
         fields,
         timestamp: o.clip.createdAt,
-        footer: { text: 'Clipped with ClipForge' }
+        footer: { text: 'Clipped with Clutch' }
       }
     ],
     attachments: [{ id: 0, filename: fileName }]

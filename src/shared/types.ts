@@ -290,7 +290,7 @@ export const DEFAULT_SETTINGS: Settings = {
       connected: false,
       privacy: 'private',
       titleTemplate: '{game} - {title}',
-      descriptionTemplate: 'Recorded with ClipForge',
+      descriptionTemplate: 'Recorded with Clutch',
       tags: ['gaming', 'clips']
     },
     schedule: { enabled: false, times: ['18:00'], source: 'favorites', tag: 'upload', platforms: ['youtube'] }
