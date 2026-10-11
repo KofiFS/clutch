@@ -20,7 +20,7 @@ export interface SaveRequest {
 
 export interface BufferEvents {
   status: [{ running: boolean; encoder?: string; resolution?: string; fps?: number; error?: string }]
-  levels: [{ micDb: number; sysDb: number }]
+  levels: [{ micDb: number; sysDb: number; sources: Record<string, number> }]
   /** A downscaled JPEG of the screen, emitted at the configured snapshot rate. */
   snapshot: [Buffer]
   log: [string]
@@ -47,6 +47,12 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
   private pendingSaves = 0
   private snapshotBuf: Buffer = Buffer.alloc(0)
   private micDb = -100
+  private sourceLevels: Record<string, number> = {}
+  private triggerIds: string[] = []
+  /** Audio track names of the current recording (track 1 is the mix). MPEG-TS drops them, so clips get them back on save. */
+  private trackTitles: string[] = []
+  /** Mic sources skipped at start because the device is not plugged in. */
+  missingSources: string[] = []
   private sysDb = -100
   private stopping = false
   private display: { width: number; height: number; crop?: { x: number; y: number; w: number; h: number } } = { width: 0, height: 0 }
@@ -104,10 +110,13 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     proc.stderr!.on('data', (chunk: string) => {
       stderrTail = (stderrTail + chunk).slice(-4000)
       for (const line of chunk.split(/\r?\n/)) {
-        const m = line.match(/RMS_level=(-?[\d.]+|-inf)/)
+        const m = line.match(/ametadata@m_([\w-]+) @ [^\]]+\] lavfi\.astats\.Overall\.RMS_level=(-?[\d.]+|-inf)/)
         if (m) {
-          this.micDb = m[1] === '-inf' ? -100 : Number(m[1])
-          this.emit('levels', { micDb: this.micDb, sysDb: this.sysDb })
+          const db = m[2] === '-inf' ? -100 : Number(m[2])
+          this.sourceLevels[m[1]] = db
+          // "Mic" for the triggers = loudest source marked as a trigger mic.
+          this.micDb = Math.max(-100, ...this.triggerIds.map((id) => this.sourceLevels[id] ?? -100))
+          this.emit('levels', { micDb: this.micDb, sysDb: this.sysDb, sources: this.sourceLevels })
         } else if (/error|failed|invalid|cannot|could not|exceeds|doesn't support/i.test(line) && !/Guessed Channel|deprecated pixel/i.test(line) && line.trim()) {
           this.emit('log', line.trim())
         }
@@ -219,18 +228,22 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     const args = ['-hide_banner', '-loglevel', 'info', '-nostats', '-y']
     args.push('-init_hw_device', 'd3d11va')
 
-    // Inputs
+    // Inputs: one dshow input per enabled mic, plus system audio on stdin.
     const inputs: string[] = []
-    let micIdx = -1
-    let sysIdx = -1
-    if (s.micDevice) {
-      micIdx = inputs.length
-      inputs.push('-f', 'dshow', '-rtbufsize', '64M', '-thread_queue_size', '2048', '-i', `audio=${s.micDevice}`)
+    const sources = (s.audioSources ?? []).filter((x) => x.enabled && !this.missingSources.includes(x.id) && (x.kind === 'desktop' || x.device))
+    const srcInput: { src: (typeof sources)[number]; idx: number }[] = []
+    for (const src of sources) {
+      if (src.kind === 'desktop') continue
+      srcInput.push({ src, idx: srcInput.length })
+      inputs.push('-f', 'dshow', '-rtbufsize', '64M', '-thread_queue_size', '2048', '-i', `audio=${src.device}`)
     }
-    if (s.systemAudio) {
-      sysIdx = inputs.length ? 1 : 0
+    const desktop = sources.find((x) => x.kind === 'desktop')
+    if (desktop) {
+      srcInput.push({ src: desktop, idx: srcInput.length })
       inputs.push('-f', 's16le', '-ar', String(SYS_RATE), '-ac', String(SYS_CHANNELS), '-thread_queue_size', '2048', '-i', 'pipe:0')
     }
+    this.triggerIds = sources.filter((x) => x.kind === 'mic' && x.trigger !== false).map((x) => x.id)
+    this.sourceLevels = {}
     args.push(...inputs)
 
     // Filter graph
@@ -254,32 +267,47 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       parts.push(`[vsnap0]fps=1/${this.snapshotIntervalSec}${snapDownload},scale=1024:-2,format=yuvj420p[snap]`)
     }
 
-    const audioLabels: string[] = []
-    if (micIdx >= 0) {
-      // Every input is rebased to t=0 so dshow's clock (seconds since boot) lines up with the pipe and video.
-      parts.push(`[${micIdx}:a]asetpts=PTS-STARTPTS,asplit=2[micA][micB]`)
-      parts.push(`[micB]asetnsamples=n=4800:p=0,astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1,anullsink`)
-      audioLabels.push('[micA]')
-    }
-    if (sysIdx >= 0) {
-      parts.push(`[${sysIdx}:a]asetpts=PTS-STARTPTS,aresample=async=1000[sysA]`)
-      audioLabels.push('[sysA]')
+    // Audio: each source -> resample/stereo/volume -> split into (mix, [own track], [meter]).
+    // Every input is rebased to t=0 so dshow's clock (seconds since boot) lines up with the pipe and video.
+    const mixLabels: string[] = []
+    const tracks: { label: string; title: string }[] = []
+    for (const { src, idx } of srcInput) {
+      const tag = src.id.replace(/[^\w-]/g, '')
+      const outs = [`[mx_${tag}]`]
+      if (src.ownTrack) outs.push(`[tr_${tag}]`)
+      const meter = src.kind === 'mic'
+      if (meter) outs.push(`[me_${tag}]`)
+      const vol = Math.max(0, Math.min(2, src.volume ?? 1)).toFixed(2)
+      const pre = `[${idx}:a]asetpts=PTS-STARTPTS,aresample=48000:async=1000,aformat=sample_rates=48000:channel_layouts=stereo,volume=${vol}`
+      parts.push(outs.length > 1 ? `${pre},asplit=${outs.length}${outs.join('')}` : `${pre}${outs[0]}`)
+      if (meter) parts.push(`[me_${tag}]asetnsamples=n=4800:p=0,astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,ametadata@m_${tag}=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1,anullsink`)
+      mixLabels.push(`[mx_${tag}]`)
+      if (src.ownTrack) tracks.push({ label: `[tr_${tag}]`, title: src.name })
     }
     let audioOut = ''
-    if (audioLabels.length === 2) {
-      parts.push(`${audioLabels.join('')}amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[a]`)
-      audioOut = '[a]'
-    } else if (audioLabels.length === 1) {
-      audioOut = audioLabels[0]
+    if (mixLabels.length > 1) {
+      parts.push(`${mixLabels.join('')}amix=inputs=${mixLabels.length}:duration=longest:dropout_transition=0:normalize=0[amix]`)
+      audioOut = '[amix]'
+    } else if (mixLabels.length === 1) {
+      audioOut = mixLabels[0]
     }
     args.push('-filter_complex', parts.join(';'))
 
     // Segment output
     args.push('-map', '[v]')
-    if (audioOut) args.push('-map', audioOut)
+    if (audioOut) {
+      // Track 1 is always the mix (what every player plays); separate tracks follow it.
+      args.push('-map', audioOut)
+      for (const t of tracks) args.push('-map', t.label)
+    }
     args.push(...this.encoderArgs(encoder, s))
     args.push('-force_key_frames', `expr:gte(t,n_forced*${SEG_SECONDS})`)
-    if (audioOut) args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000')
+    if (audioOut) {
+      args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000')
+      this.trackTitles = ['Mix', ...tracks.map((t) => t.title)]
+      args.push('-metadata:s:a:0', 'title=Mix')
+      tracks.forEach((t, i) => args.push(`-metadata:s:a:${i + 1}`, `title=${t.title.replace(/[\r\n=]/g, ' ')}`))
+    }
     args.push('-f', 'segment', '-segment_time', String(SEG_SECONDS), '-segment_format', 'mpegts', '-reset_timestamps', '1', '-segment_start_number', String(this.segStartNumber), path.join(this.segDir, 'seg%06d.ts'))
 
     // Snapshot output (stdout)
@@ -356,7 +384,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       const r = await run(ffmpegPath(), [
         '-hide_banner', '-loglevel', 'error', '-y',
         '-ss', offsetSec.toFixed(2), '-f', 'concat', '-safe', '0', '-i', listFile,
-        '-t', durationSec.toFixed(2), '-c', 'copy', '-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', req.outFile
+        '-t', durationSec.toFixed(2), '-map', '0', '-c', 'copy', ...this.trackTitles.flatMap((t, i) => [`-metadata:s:a:${i}`, `title=${t}`, `-metadata:s:a:${i}`, `handler_name=${t}`]), '-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', req.outFile
       ], { timeoutMs: 120_000 })
       try { fs.unlinkSync(listFile) } catch { /* ignore */ }
       if (r.code !== 0 || !fs.existsSync(req.outFile)) throw new Error(`Clip export failed: ${r.stderr.trim().split('\n').pop()}`)

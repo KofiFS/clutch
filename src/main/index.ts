@@ -176,6 +176,15 @@ app.whenReady().then(async () => {
 
   recorder.on('status', (st) => { send('status', st); tray?.refresh({ running: st.running, game: st.game }) })
   recorder.on('activity', (ev) => send('activity', ev))
+  let lastLevels = 0
+  recorder.on('levels', (l) => {
+    // Only while the window is visible; nobody sees meters in the tray.
+    if (!win || !win.isVisible() || win.isMinimized()) return
+    const now = Date.now()
+    if (now - lastLevels < 90) return
+    lastLevels = now
+    send('levels', l)
+  })
   recorder.on('clip', (clip) => {
     send('clip-saved', clip)
     if (settings.get().app.overlayToasts) overlay?.show('Clipped!', `${clip.game} · ${Math.round(clip.durationSec)}s`, 'clip')

@@ -7,6 +7,21 @@ export type CaptureArea =
   | { kind: 'window'; process: string; title: string }
   | { kind: 'region'; x: number; y: number; w: number; h: number; label?: string }
 
+/** One audio input. Every enabled source is mixed into track 1; `ownTrack` also keeps it on its own track. */
+export interface AudioSource {
+  id: string
+  kind: 'mic' | 'desktop'
+  /** DirectShow device name (mics, virtual cables, capture cards). */
+  device?: string
+  name: string
+  enabled: boolean
+  /** 1 = 100 %. 0 .. 2. */
+  volume: number
+  ownTrack: boolean
+  /** Counts as "my mic" for the voice and hype triggers. */
+  trigger?: boolean
+}
+
 export type Encoder = 'auto' | 'h264_nvenc' | 'hevc_nvenc' | 'av1_nvenc' | 'h264_amf' | 'h264_qsv' | 'libx264'
 
 export interface CaptureSettings {
@@ -26,7 +41,9 @@ export interface CaptureSettings {
   monitorIndex: number
   /** Whole monitor, the game's window, a chosen window, or a custom area. */
   area: CaptureArea
-  /** dshow microphone device name, or '' to disable. */
+  /** Audio inputs (mics + system audio), mixed into one track with optional separate tracks. */
+  audioSources: AudioSource[]
+  /** Derived from audioSources: first enabled mic. Kept for simple screens like onboarding. */
   micDevice: string
   /** Capture system/desktop audio through Electron loopback. */
   systemAudio: boolean
@@ -291,6 +308,7 @@ export const DEFAULT_SETTINGS: Settings = {
     postSeconds: 5,
     monitorIndex: 0,
     area: { kind: 'monitor' },
+    audioSources: [],
     micDevice: '',
     systemAudio: true,
     outputDir: '',

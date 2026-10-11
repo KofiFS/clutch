@@ -6,6 +6,7 @@ import { startMeter } from '../lib/loopback'
 import { useStore } from '../lib/store'
 import { HotkeyInput } from '../components/HotkeyInput'
 import { CaptureAreaSettings, StorageSettings } from '../components/CaptureAreaSettings'
+import { AudioSources } from '../components/AudioSources'
 import { useToast } from '../components/Toasts'
 import { Badge, Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 
@@ -30,7 +31,6 @@ export default function Settings() {
   const [err, setErr] = useState('')
   const [advanced, setAdvanced] = useState(false)
   const [hotkeyStatus, setHotkeyStatus] = useState<'ok' | 'conflict' | 'unknown'>('unknown')
-  const [micDb, setMicDb] = useState<number>()
 
   useEffect(() => {
     void window.cf.system.audioDevices().then(setDevices)
@@ -38,13 +38,6 @@ export default function Settings() {
   }, [])
   const hotkey = settings?.capture.clipHotkey ?? ''
   useEffect(() => { if (hotkey) void window.cf.system.testHotkey(hotkey).then((ok) => setHotkeyStatus(ok ? 'ok' : 'conflict')) }, [hotkey, status.hotkeyRegistered])
-  const mic = settings?.capture.micDevice ?? ''
-  useEffect(() => {
-    if (!mic || status.running) { setMicDb(undefined); return }
-    let stop: (() => void) | undefined
-    startMeter('mic', setMicDb, mic).then((s) => (stop = s)).catch(() => setMicDb(undefined))
-    return () => stop?.()
-  }, [mic, status.running])
 
   if (!settings) return null
   const c = settings.capture
@@ -142,23 +135,7 @@ export default function Settings() {
         </div>
       </Section>
 
-      <Section title="Audio" icon={<Mic size={16} />}>
-        <div className="grid grid-cols-2 gap-5">
-          <div>
-            <Field label="Microphone" hint="Used in clips and for the “when I talk” trigger.">
-              <select className="input" value={c.micDevice} onChange={(e) => void setCap({ micDevice: e.target.value })}>
-                <option value="">Off</option>
-                {devices.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </Field>
-            <div className="mt-3"><LevelMeter label="Mic" db={status.running ? status.micLevelDb : micDb} /></div>
-          </div>
-          <div>
-            <Toggle checked={c.systemAudio} onChange={(systemAudio) => void setCap({ systemAudio })} label="Game & voice-chat audio" hint="Captured through Windows loopback. Needed for the “when friends talk” trigger." />
-            <div className="mt-3"><LevelMeter label="System" db={status.running ? status.systemLevelDb : undefined} /></div>
-          </div>
-        </div>
-      </Section>
+      <AudioSources />
 
       <Appearance />
 

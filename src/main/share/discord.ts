@@ -69,7 +69,7 @@ export async function makeShareable(clip: Clip, maxMb: number, cacheDir: string)
       ? ['-c:v', 'libx264', '-preset', 'veryfast']
       : [ '-c:v', hw, ...(hw === 'h264_nvenc' ? ['-preset', 'p5', '-rc', 'vbr'] : []) ]
     const r = await run(ffmpegPath(), [
-      '-hide_banner', '-loglevel', 'error', '-y', '-i', clip.file,
+      '-hide_banner', '-loglevel', 'error', '-y', '-i', clip.file, '-map', '0:v:0', '-map', '0:a:0?',
       '-vf', `scale=${w}:-2:flags=lanczos,fps=${fps},format=yuv420p`,
       ...vcodec, '-b:v', `${videoKbps}k`, '-maxrate', `${Math.round(videoKbps * 1.2)}k`, '-bufsize', `${videoKbps * 2}k`,
       '-c:a', 'aac', '-b:a', `${audioKbps}k`, '-ac', '2', '-movflags', '+faststart', out

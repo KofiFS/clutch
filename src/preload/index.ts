@@ -19,7 +19,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels'
 
 const api = {
   settings: {

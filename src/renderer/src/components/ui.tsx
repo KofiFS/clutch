@@ -14,7 +14,7 @@ export function Field({ label, hint, children, right }: { label: string; hint?: 
   )
 }
 
-export function Toggle({ checked, onChange, label, hint, size = 'md' }: { checked: boolean; onChange: (v: boolean) => void; label?: string; hint?: string; size?: 'md' | 'lg' }) {
+export function Toggle({ checked, onChange, label, hint, size = 'md', ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; label?: string; hint?: string; size?: 'md' | 'lg'; ariaLabel?: string }) {
   const id = useId()
   const w = size === 'lg' ? 'w-[52px] h-[30px]' : 'w-11 h-[26px]'
   const knob = size === 'lg' ? 'w-[24px] h-[24px] top-[2px]' : 'w-5 h-5 top-[2px]'
@@ -26,7 +26,7 @@ export function Toggle({ checked, onChange, label, hint, size = 'md' }: { checke
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-label={label}
+        aria-label={label ?? ariaLabel}
         onClick={() => onChange(!checked)}
         className={`mt-0.5 relative ${w} rounded-full transition-all duration-300 shrink-0 border ${checked ? 'border-white/40' : 'border-white/12 group-hover:border-white/25'}`}
         style={{

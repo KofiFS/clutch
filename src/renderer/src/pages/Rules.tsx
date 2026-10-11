@@ -3,7 +3,8 @@ import { Eye, Flame, Gamepad2, Mic, Plus, SlidersHorizontal, Sparkles, Trash2 } 
 import type { GameProfile } from '../../../shared/types'
 import type { GameSummary, RunningApp } from '../../../shared/types'
 import { fileUrl, useStore } from '../lib/store'
-import { Badge, Field, GameIcon, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
+import { Badge, Field, GameIcon, Section, Segmented, Slider, Toggle } from '../components/ui'
+import { LiveMeter } from '../components/AudioSources'
 import { GamePicker } from '../components/GamePicker'
 
 const PRESETS = [
@@ -58,8 +59,8 @@ export default function Rules() {
           <Toggle checked={vo.onSystemAudio} onChange={(onSystemAudio) => void setVoice({ onSystemAudio })} label="Voice chat / game audio" hint="Uses system audio. Game sound counts too, so raise the threshold if gunfire triggers it." />
         </div>
         <div className="card-2 p-3 space-y-2">
-          <LevelMeter label="Mic" db={status.running ? status.micLevelDb : undefined} threshold={vo.thresholdDb} />
-          <LevelMeter label="System" db={status.running ? status.systemLevelDb : undefined} threshold={vo.thresholdDb} />
+          <LiveMeter source="mic" label="Mic" threshold={vo.thresholdDb} />
+          <LiveMeter source="system" label="System" threshold={vo.thresholdDb} />
           <p className="text-[11px] text-ink-3">{status.running ? 'The line is your threshold: anything past it counts as talking.' : 'Start recording to see live levels against the threshold.'}</p>
         </div>
         <div className="grid grid-cols-4 gap-5">

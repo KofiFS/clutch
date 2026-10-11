@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, Clapperboard, Eye, Gamepad2, Mic, UploadCloud, Zap, Film, ChevronRight, Activity, Flame, MessageSquare, Trophy, Send, Loader2 } from 'lucide-react'
 import type { Clip, HealthItem } from '../../../shared/types'
 import { fileUrl, fmtBytes, fmtDuration, timeAgo, useStore } from '../lib/store'
-import { GameIcon, LevelMeter, Section, Badge, Kbd, RingGauge, IconOrb } from '../components/ui'
+import { GameIcon, Section, Badge, Kbd, RingGauge, IconOrb } from '../components/ui'
+import { LiveMeter } from '../components/AudioSources'
 import { useToast } from '../components/Toasts'
 
 export default function Dashboard() {
@@ -164,8 +165,8 @@ export default function Dashboard() {
 
           <Section title="Live audio" icon={<Activity size={16} />} desc={status.running ? undefined : 'Meters move while recording.'}>
             <div className="space-y-2.5">
-              <LevelMeter label="Mic" db={status.running ? status.micLevelDb : undefined} threshold={settings.voice.enabled && settings.voice.onMic ? settings.voice.thresholdDb : undefined} />
-              <LevelMeter label="System" db={status.running ? status.systemLevelDb : undefined} threshold={settings.voice.enabled && settings.voice.onSystemAudio ? settings.voice.thresholdDb : undefined} />
+              <LiveMeter source="mic" label="Mic" threshold={settings.voice.enabled && settings.voice.onMic ? settings.voice.thresholdDb : undefined} />
+              <LiveMeter source="system" label="System" threshold={settings.voice.enabled && settings.voice.onSystemAudio ? settings.voice.thresholdDb : undefined} />
             </div>
           </Section>
         </div>

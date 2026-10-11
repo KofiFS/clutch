@@ -32,12 +32,13 @@ export async function healthCheck(settings: Settings, status: BufferStatus): Pro
     fix: 'settings'
   })
   const devices = await listAudioDevices()
-  const mic = settings.capture.micDevice
+  const mics = (settings.capture.audioSources ?? []).filter((x) => x.kind === 'mic' && x.enabled && x.device)
+  const missing = mics.filter((x) => !devices.includes(x.device!))
   items.push({
     id: 'mic',
-    label: 'Microphone',
-    ok: !mic ? 'warn' : devices.includes(mic),
-    detail: !mic ? 'No microphone selected. Your voice will not be recorded.' : devices.includes(mic) ? mic : `"${mic}" is not plugged in. Pick another device.`,
+    label: mics.length > 1 ? `Microphones (${mics.length})` : 'Microphone',
+    ok: !mics.length ? 'warn' : missing.length ? false : true,
+    detail: !mics.length ? 'No microphone selected. Your voice will not be recorded.' : missing.length ? `${missing.map((m) => `"${m.device}"`).join(', ')} not plugged in.` : mics.map((m) => m.device).join(', '),
     fix: 'settings'
   })
   items.push({

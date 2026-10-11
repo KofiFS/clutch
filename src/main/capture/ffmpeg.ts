@@ -111,7 +111,7 @@ export async function trimClip(src: string, out: string, startSec: number, endSe
   const r = await run(ffmpegPath(), [
     '-hide_banner', '-loglevel', 'error', '-y',
     '-ss', startSec.toFixed(2), '-to', endSec.toFixed(2), '-i', src,
-    '-c', 'copy', '-movflags', '+faststart', out
+    '-map', '0', '-c', 'copy', '-movflags', '+faststart', out
   ], { timeoutMs: 120_000 })
   return r.code === 0
 }

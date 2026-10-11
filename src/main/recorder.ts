@@ -3,6 +3,7 @@ import { screen } from 'electron'
 import path from 'node:path'
 import type { ActivityEvent, BufferStatus, CaptureSettings, Clip, GameInfo, Settings, TriggerSource } from '../shared/types'
 import { ReplayBuffer } from './capture/replayBuffer'
+import { listAudioDevices } from './capture/ffmpeg'
 import { getForegroundApp, getWindowRect, toGameInfo } from './capture/foreground'
 import { Library } from './library'
 import type { SettingsStore } from './settings'
@@ -16,6 +17,8 @@ const GAME_POLL_MS = 3000
 
 export interface RecorderEvents {
   status: [BufferStatus]
+  /** Fast (~10 Hz) audio levels for meters; kept out of `status` so the whole UI doesn't re-render. */
+  levels: [{ micDb: number; sysDb: number; sources: Record<string, number> }]
   activity: [ActivityEvent]
   clip: [Clip]
   game: [GameInfo]
@@ -70,8 +73,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       if (!st.running) { this.voice.stop(); this.status.talking = false; this.activeCapture = null }
       this.pushStatus()
     })
-    this.buffer.on('levels', ({ micDb }) => {
+    this.buffer.on('levels', ({ micDb, sources }) => {
       this.status.micLevelDb = micDb
+      this.emit('levels', { micDb, sysDb: this.status.systemLevelDb ?? -100, sources })
       this.voice.onLevels(micDb, this.status.systemLevelDb ?? -100, 'mic')
       this.hype.feed('mic', micDb)
     })
@@ -94,7 +98,17 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     })
 
     let lastVision = { enabled: settings.get().vision.enabled, interval: settings.get().vision.intervalSeconds }
+    let lastAudio = JSON.stringify(settings.get().capture.audioSources)
     settings.onChange((s) => {
+      const audio = JSON.stringify(s.capture.audioSources)
+      if (audio !== lastAudio) {
+        lastAudio = audio
+        if (this.status.running && !this.starting && !this.long) {
+          this.log('info', 'Audio sources changed - restarting recording')
+          const auto = this.autoStarted
+          void this.buffer.stop().then(() => this.start(auto ? 'auto' : 'manual'))
+        }
+      }
       this.voice.setRules(s.voice)
       this.hype.setRules(s.hype)
       this.vision = new VisionJudge(s.ai.anthropicApiKey, s.ai.model)
@@ -167,6 +181,14 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       const monW = Math.round(d.size.width * d.scaleFactor)
       const monH = Math.round(d.size.height * d.scaleFactor)
       const { crop, label } = await this.resolveArea(capture, d, monW, monH)
+      // A missing mic would make FFmpeg fail to start at all, so leave unplugged ones out.
+      const wanted = (capture.audioSources ?? []).filter((x) => x.enabled && x.kind === 'mic' && x.device)
+      if (wanted.length) {
+        const present = await listAudioDevices()
+        const missing = wanted.filter((x) => !present.includes(x.device!))
+        this.buffer.missingSources = missing.map((x) => x.id)
+        for (const m of missing) this.log('info', `${m.name} (${m.device}) is not plugged in - recording without it`)
+      } else this.buffer.missingSources = []
       this.status.areaLabel = label
       await this.buffer.start(capture, { width: monW, height: monH, crop })
       this.activeCapture = capture
@@ -237,6 +259,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.lastSysAudioAt = Date.now()
     this.status.systemLevelDb = levelDb
     this.voice.onLevels(this.status.micLevelDb ?? -100, levelDb, 'sys')
+    this.emitLevelsThrottled()
     this.hype.feed('system', levelDb)
   }
 
@@ -363,6 +386,14 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.status.longRecording = { ...this.status.longRecording!, bookmarks: n }
     this.emit('notice', { title: `Bookmark ${n}`, sub: `at ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} in this recording`, kind: 'clip' })
     this.pushStatus()
+  }
+
+  private lastLevelEmit = 0
+  private emitLevelsThrottled() {
+    const now = Date.now()
+    if (now - this.lastLevelEmit < 100) return
+    this.lastLevelEmit = now
+    this.emit('levels', { micDb: this.status.micLevelDb ?? -100, sysDb: this.status.systemLevelDb ?? -100, sources: {} })
   }
 
   /** Length presets that fit in the current buffer, ascending. */
