@@ -1,0 +1,43 @@
+{
+  "name": "clipforge",
+  "version": "0.1.0",
+  "description": "Smart game clip recorder: tell it what to clip, pick quality, auto-upload on a schedule.",
+  "main": "./out/main/index.js",
+  "author": "iceko",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist": "electron-vite build && electron-builder --win"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "googleapis": "^160.0.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "^4.0.0",
+    "lucide-react": "^0.525.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.8.0",
+    "vite": "^6.3.0"
+  },
+  "build": {
+    "appId": "com.iceko.clipforge",
+    "productName": "ClipForge",
+    "directories": { "output": "release" },
+    "files": ["out/**", "resources/**", "package.json"],
+    "win": { "target": ["nsis"] }
+  }
+}
