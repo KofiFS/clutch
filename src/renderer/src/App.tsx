@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Film, LayoutDashboard, Monitor, Play, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
+import { Film, LayoutDashboard, Monitor, Play, Search, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
 import { StoreProvider, useStore, type Page } from './lib/store'
 import { ToastProvider } from './components/Toasts'
 import { GameIcon, Kbd } from './components/ui'
 import type { ReactNode } from 'react'
 import { ClipViewer } from './components/ClipViewer'
 import { Backdrop } from './components/Backdrop'
+import { CommandPalette } from './components/CommandPalette'
 import Dashboard from './pages/Dashboard'
 import Library from './pages/Library'
 import Rules from './pages/Rules'
@@ -57,7 +58,7 @@ function StatusStrip() {
   )
 }
 
-function TitleBar({ live }: { live: boolean }) {
+function TitleBar({ live, onSearch }: { live: boolean; onSearch: () => void }) {
   return (
     <div className="drag h-11 shrink-0 flex items-center px-5 gap-2.5 select-none relative z-10">
       <img src="./icon.png" alt="" className="w-6 h-6" style={{ filter: "drop-shadow(0 0 8px rgba(40,140,255,0.7))" }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
@@ -65,6 +66,16 @@ function TitleBar({ live }: { live: boolean }) {
       <span className="font-hud text-[9px] text-ink-3 tracking-[0.2em] mt-px">BETA</span>
       <StatusStrip />
       {live && <span className="sr-only">Recording</span>}
+      <button
+        onClick={onSearch}
+        className="no-drag ml-auto mr-[150px] flex items-center gap-2 h-8 w-[300px] max-w-[30vw] px-3 rounded-full text-[13px] text-ink-3 hover:text-ink-2 border border-white/12 transition-colors"
+        style={{ background: 'rgba(0,10,25,0.4)', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.4)' }}
+        aria-label="Search (Ctrl+K)"
+      >
+        <Search size={14} />
+        <span className="flex-1 text-left truncate">Search Clutch…</span>
+        <kbd className="kbd h-5 min-w-5 text-[9px]">Ctrl</kbd><kbd className="kbd h-5 min-w-5 text-[9px]">K</kbd>
+      </button>
     </div>
   )
 }
@@ -96,9 +107,11 @@ function RailButton({ label, hint, onClick, active, variant, disabled, children 
 
 function Shell() {
   const { page, setPage, status, start, stop, clipNow, settings, game, viewerClipId, openClip } = useStore()
+  const [searchOpen, setSearchOpen] = useState(false)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearchOpen((v) => !v); return }
       if (e.ctrlKey && !e.shiftKey && !e.altKey) {
         const nav = NAV.find((n) => n.key === e.key)
         if (nav) { e.preventDefault(); setPage(nav.id) }
@@ -121,7 +134,7 @@ function Shell() {
   return (
     <div className="h-full flex flex-col">
       <Backdrop live={live} />
-      <TitleBar live={live} />
+      <TitleBar live={live} onSearch={() => setSearchOpen(true)} />
       <div className="flex-1 flex min-h-0 px-3 pb-3 gap-3">
         <aside className="card relative z-30 w-[76px] shrink-0 flex flex-col items-center py-3">
           <nav className="relative z-[2] flex flex-col items-center gap-1.5" aria-label="Main">
@@ -175,6 +188,7 @@ function Shell() {
         </main>
       </div>
       {viewerClipId && <ClipViewer clipId={viewerClipId} onClose={() => openClip(null)} />}
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   )
 }

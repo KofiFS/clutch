@@ -274,3 +274,10 @@ html[data-fx='lite'] .pulse-dot::after { animation: none; }
 /* The OS already frosts the desktop behind the window; thin our wallpaper so it shows through. */
 html[data-window-glass='on'] .cf-base { opacity: 0.45; }
 html[data-window-glass='on'] .cf-aurora { opacity: 0.35 !important; }
+
+/* Search: briefly highlight the setting you jumped to (finite animation, see the GPU note above). */
+.search-flash { animation: searchFlash 1.6s ease-out 1; border-radius: 16px; }
+@keyframes searchFlash {
+  0%, 30% { box-shadow: 0 0 0 2px rgba(79, 227, 255, 0.9), 0 0 32px -4px rgba(79, 227, 255, 0.8); }
+  100% { box-shadow: 0 0 0 2px rgba(79, 227, 255, 0), 0 0 32px -4px rgba(79, 227, 255, 0); }
+}

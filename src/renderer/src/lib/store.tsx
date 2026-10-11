@@ -4,6 +4,7 @@ import { loopbackActive, startLoopback, stopLoopback } from './loopback'
 import { useToast } from '../components/Toasts'
 
 export type Page = 'dashboard' | 'library' | 'rules' | 'uploads' | 'settings'
+export interface LibraryPreset { game?: string; text?: string; view?: 'clips' | 'trash' }
 
 interface Store {
   settings: Settings | null
@@ -16,6 +17,9 @@ interface Store {
   setPage: (p: Page) => void
   /** Clip currently open in the viewer, if any. */
   viewerClipId: string | null
+  /** One-shot filter for the Clips page (set by search / tray), cleared once applied. */
+  libraryPreset: LibraryPreset | null
+  setLibraryPreset: (p: LibraryPreset | null) => void
   openClip: (id: string | null) => void
   save: (patch: Partial<Settings>) => Promise<void>
   start: () => Promise<void>
@@ -35,6 +39,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [uploadsVersion, setUp] = useState(0)
   const [page, setPage] = useState<Page>('dashboard')
   const [viewerClipId, openClip] = useState<string | null>(null)
+  const [libraryPreset, setLibraryPreset] = useState<LibraryPreset | null>(null)
   const [loopbackError, setLoopbackError] = useState<string | null>(null)
   const toast = useToast()
   const settingsRef = useRef<Settings | null>(null)
@@ -94,8 +99,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const clipNow = useCallback(async () => { await window.cf.buffer.clipNow() }, [])
 
   const value = useMemo<Store>(
-    () => ({ settings, status, activity, game, libraryVersion, uploadsVersion, page, setPage, viewerClipId, openClip, save, start, stop, clipNow, loopbackError }),
-    [settings, status, activity, game, libraryVersion, uploadsVersion, page, viewerClipId, save, start, stop, clipNow, loopbackError]
+    () => ({ settings, status, activity, game, libraryVersion, uploadsVersion, page, setPage, viewerClipId, openClip, libraryPreset, setLibraryPreset, save, start, stop, clipNow, loopbackError }),
+    [settings, status, activity, game, libraryVersion, uploadsVersion, page, viewerClipId, libraryPreset, save, start, stop, clipNow, loopbackError]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

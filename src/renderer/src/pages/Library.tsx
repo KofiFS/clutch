@@ -10,7 +10,7 @@ const TRIGGER_ICON: Record<TriggerSource, typeof Eye> = { hotkey: Keyboard, visi
 const TRIGGER_LABEL: Record<TriggerSource, string> = { hotkey: 'Hotkey', vision: 'AI', voice: 'Voice', hype: 'Hype', manual: 'Manual', long: 'Long' }
 
 export default function Library() {
-  const { libraryVersion, settings, openClip, viewerClipId } = useStore()
+  const { libraryVersion, settings, openClip, viewerClipId, libraryPreset, setLibraryPreset } = useStore()
   const toast = useToast()
   const [confirm, confirmDialog] = useConfirm()
   const [clips, setClips] = useState<Clip[]>([])
@@ -25,6 +25,15 @@ export default function Library() {
   const [tagDraft, setTagDraft] = useState<string | null>(null)
   const lastClicked = useRef<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+
+  // Filters handed over by search or the tray ("show Valorant clips", "open trash").
+  useEffect(() => {
+    if (!libraryPreset) return
+    if (libraryPreset.game !== undefined) setGame(libraryPreset.game)
+    if (libraryPreset.text !== undefined) setText(libraryPreset.text)
+    if (libraryPreset.view) setView(libraryPreset.view)
+    setLibraryPreset(null)
+  }, [libraryPreset, setLibraryPreset])
 
   const reload = useCallback(() => {
     void window.cf.library.query({ text, game: game || undefined, trigger, favoritesOnly: fav, sort, trashed: view === 'trash' }).then(setClips)
