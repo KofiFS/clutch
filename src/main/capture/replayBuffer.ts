@@ -49,7 +49,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
   private micDb = -100
   private sysDb = -100
   private stopping = false
-  private display = { width: 0, height: 0 }
+  private display: { width: number; height: number; crop?: { x: number; y: number; w: number; h: number } } = { width: 0, height: 0 }
   private restarts: number[] = []
   private segStartNumber = 0
   running = false
@@ -65,7 +65,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     this.segDir = path.join(workDir, 'buffer')
   }
 
-  async start(settings: CaptureSettings, display: { width: number; height: number }, opts: { restart?: boolean } = {}): Promise<void> {
+  async start(settings: CaptureSettings, display: { width: number; height: number; crop?: { x: number; y: number; w: number; h: number } }, opts: { restart?: boolean } = {}): Promise<void> {
     if (this.running) await this.stop()
     this.settings = settings
     this.display = display
@@ -80,8 +80,10 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
 
     const enc = await detectEncoders()
     this.encoder = settings.encoder === 'auto' ? enc.best : enc.available.includes(settings.encoder) ? settings.encoder : enc.best
-    const w = Math.round(display.width * settings.resolutionScale)
-    const h = Math.round(display.height * settings.resolutionScale)
+    const srcW = display.crop?.w ?? display.width
+    const srcH = display.crop?.h ?? display.height
+    const w = Math.round(srcW * settings.resolutionScale)
+    const h = Math.round(srcH * settings.resolutionScale)
     let fitScale = 1
     if ((w > 4096 || h > 4096) && (this.encoder === 'h264_nvenc' || this.encoder === 'h264_amf' || this.encoder === 'h264_qsv')) {
       // H.264 hardware encoders stop at 4096 px; ultrawide / 5K screens need HEVC or AV1, or a downscale.
@@ -133,13 +135,26 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     if (!this.proc) return
     this.stopping = true
     const p = this.proc
+    const usesStdinForAudio = !!this.settings?.systemAudio
     await new Promise<void>((resolve) => {
-      const t = setTimeout(() => { p.kill('SIGKILL'); resolve() }, 3000)
-      p.once('exit', () => { clearTimeout(t); resolve() })
-      try { p.stdin?.write('q') } catch { /* ignore */ }
-      try { p.stdin?.end() } catch { /* ignore */ }
+      let killed = false
+      const kill = () => { if (!killed) { killed = true; p.kill('SIGKILL') } }
+      // Give up waiting entirely after a few seconds, but always try to see the exit first so
+      // "running" is false before anyone starts the next recording.
+      const hard = setTimeout(resolve, 4000)
+      p.once('exit', () => { clearTimeout(hard); resolve() })
+      if (usesStdinForAudio) {
+        // stdin is the system-audio PCM pipe, so a 'q' would just be audio. Segments are already on
+        // disk; ending the process is safe.
+        kill()
+      } else {
+        try { p.stdin?.write('q') } catch { /* ignore */ }
+        try { p.stdin?.end() } catch { /* ignore */ }
+        setTimeout(kill, 2000)
+      }
     })
     this.cleanup()
+    this.emit('status', { running: false })
   }
 
   private cleanup() {
@@ -219,7 +234,9 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     args.push(...inputs)
 
     // Filter graph
-    const grab = `ddagrab=output_idx=${s.monitorIndex}:framerate=${s.fps}:draw_mouse=1`
+    const crop = this.display.crop
+    const cropArgs = crop ? `:offset_x=${crop.x}:offset_y=${crop.y}:video_size=${crop.w}x${crop.h}` : ''
+    const grab = `ddagrab=output_idx=${s.monitorIndex}:framerate=${s.fps}:draw_mouse=1${cropArgs}`
     const scaleExpr = scale === 1 ? '' : `,scale=trunc(iw*${scale}/2)*2:trunc(ih*${scale}/2)*2`
     const parts: string[] = []
     // The screenshot branch only exists while AI watching is on; otherwise frames never leave the GPU

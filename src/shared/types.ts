@@ -1,5 +1,12 @@
 // Types shared between the main process and the renderer.
 
+/** What part of the screen to record. Region coordinates are physical pixels on the chosen monitor. */
+export type CaptureArea =
+  | { kind: 'monitor' }
+  | { kind: 'game' }
+  | { kind: 'window'; process: string; title: string }
+  | { kind: 'region'; x: number; y: number; w: number; h: number; label?: string }
+
 export type Encoder = 'auto' | 'h264_nvenc' | 'hevc_nvenc' | 'av1_nvenc' | 'h264_amf' | 'h264_qsv' | 'libx264'
 
 export interface CaptureSettings {
@@ -17,6 +24,8 @@ export interface CaptureSettings {
   postSeconds: number
   /** Monitor index for ddagrab. */
   monitorIndex: number
+  /** Whole monitor, the game's window, a chosen window, or a custom area. */
+  area: CaptureArea
   /** dshow microphone device name, or '' to disable. */
   micDevice: string
   /** Capture system/desktop audio through Electron loopback. */
@@ -209,6 +218,14 @@ export interface UploadRecord {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
+export interface MonitorInfo {
+  index: number
+  label: string
+  width: number
+  height: number
+  primary: boolean
+}
+
 export interface GameInfo {
   name: string
   process: string
@@ -227,6 +244,8 @@ export interface BufferStatus {
   gameInfo?: GameInfo
   fps?: number
   resolution?: string
+  /** Human description of what is being captured, e.g. "Valorant window" or "Custom area 2560x1440". */
+  areaLabel?: string
   lastError?: string
   micLevelDb?: number
   systemLevelDb?: number
@@ -271,6 +290,7 @@ export const DEFAULT_SETTINGS: Settings = {
     preSeconds: 20,
     postSeconds: 5,
     monitorIndex: 0,
+    area: { kind: 'monitor' },
     micDevice: '',
     systemAudio: true,
     outputDir: '',

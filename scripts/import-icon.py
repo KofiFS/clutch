@@ -1,4 +1,9 @@
-"""Turn a square logo with a solid black background into app icons with real transparency.
+"""Turn a logo into app icons with real transparency.
+
+Handles three kinds of source image automatically:
+  - already transparent PNG: used as-is
+  - logo on a white background: the white is removed, soft edges and glow are kept
+  - rounded tile on solid black: the tile stays opaque, the black outside becomes transparent
 
 Usage: python scripts/import-icon.py <source image> [resources dir]
 
@@ -15,51 +20,122 @@ src = Path(sys.argv[1])
 out = Path(sys.argv[2] if len(sys.argv) > 2 else 'resources')
 out.mkdir(parents=True, exist_ok=True)
 
-im = Image.open(src).convert('RGB')
-w, h = im.size
-px = im.load()
+raw = Image.open(src)
+corners = [(0, 0), (raw.width - 1, 0), (0, raw.height - 1), (raw.width - 1, raw.height - 1)]
 
 
-def edge(points):
-    """First index along a scan line where the tile's blue rim starts."""
-    for i, p in points:
-        if p[2] > 60:
-            return i
-    return None
+def from_transparent(img):
+    """The logo already has real transparency: use it as-is."""
+    return img.convert('RGBA')
 
 
-mid_y, mid_x = h // 2, w // 2
-left = edge((x, px[x, mid_y]) for x in range(w))
-right = edge((x, px[x, mid_y]) for x in range(w - 1, -1, -1))
-top = edge((y, px[mid_x, y]) for y in range(h))
-bottom = edge((y, px[mid_x, y]) for y in range(h - 1, -1, -1))
-print('tile edges', left, top, right, bottom)
+def from_white(img):
+    """Logo on a white background.
 
-# Rounded-rect mask for the tile, supersampled for smooth corners.
-radius = int((right - left) * 0.17)
-ss = 4
-mask = Image.new('L', (w * ss, h * ss), 0)
-ImageDraw.Draw(mask).rounded_rectangle([(left - 2) * ss, (top - 2) * ss, (right + 2) * ss, (bottom + 2) * ss], radius=radius * ss, fill=255)
-mask = mask.resize((w, h), Image.LANCZOS)
+    Only light pixels connected to the image border count as background (the white page and the soft
+    outer glow). White highlights *inside* the logo are enclosed by its coloured outline, so they stay
+    solid instead of turning grey on dark backgrounds.
+    """
+    im = img.convert('RGB')
+    w, h = im.size
+    r, g, b = im.split()
+    lightest = ImageChops.darker(ImageChops.darker(r, g), b)  # min(r, g, b) per pixel
+    light = lightest.point(lambda v: 255 if v > 120 else 0)
+    # Flood-fill the light region from every border pixel that is light.
+    region = light.copy()
+    for x in range(0, w, 8):
+        for y in (0, h - 1):
+            if region.getpixel((x, y)) == 255:
+                ImageDraw.floodfill(region, (x, y), 128)
+    for y in range(0, h, 8):
+        for x in (0, w - 1):
+            if region.getpixel((x, y)) == 255:
+                ImageDraw.floodfill(region, (x, y), 128)
+    outside = region.point(lambda v: 255 if v == 128 else 0)
+    # Enclosed gaps (e.g. white space between swirls) are background too when they are large and
+    # pure white; small specular highlights are below the size limit and stay solid.
+    pure = lightest.point(lambda v: 255 if v > 248 else 0)
+    pure = ImageChops.subtract(pure, outside)
+    min_area = int(w * h * 0.001)
+    for y in range(0, h, 6):
+        for x in range(0, w, 6):
+            if pure.getpixel((x, y)) != 255:
+                continue
+            ImageDraw.floodfill(pure, (x, y), 100)
+            count = pure.histogram()[100]
+            ImageDraw.floodfill(pure, (x, y), 50 if count >= min_area else 200)
+    holes = pure.point(lambda v: 255 if v == 50 else 0)
+    outside = ImageChops.lighter(outside, holes)
+    # Soften the boundary by a pixel so edges stay anti-aliased.
+    outside = outside.filter(ImageFilter.GaussianBlur(0.8))
+    src_px, out_px, light_px = im.load(), outside.load(), lightest.load()
+    rgba = Image.new('RGBA', (w, h))
+    dst = rgba.load()
+    for y in range(h):
+        for x in range(w):
+            o = out_px[x, y] / 255  # 1 = background side
+            cr, cg, cb = src_px[x, y]
+            if o <= 0:
+                dst[x, y] = (cr, cg, cb, 255)
+                continue
+            # Background side: alpha from how far the pixel is from white, then un-mix the white.
+            a_bg = 255 - light_px[x, y]
+            a_bg = 0 if a_bg < 6 else min(255, int(a_bg * 1.08))
+            a = int(round(a_bg * o + 255 * (1 - o)))
+            if a == 0:
+                dst[x, y] = (0, 0, 0, 0)
+                continue
+            k = a / 255
+            un = lambda c: max(0, min(255, int((c - 255 * (1 - k)) / k)))
+            dst[x, y] = (un(cr), un(cg), un(cb), a)
+    return rgba
 
-# Glow alpha outside the tile from brightness (the glow is blue, so weigh the blue channel too).
-bright = im.convert('L').point(lambda v: min(255, v * 4))
-blue = im.getchannel('B').point(lambda v: min(255, v * 3))
-glow_alpha = ImageChops.lighter(bright, blue)
-# Inside the tile: fully opaque. Outside: glow alpha.
-alpha = ImageChops.lighter(mask, glow_alpha)
 
-rgba = im.copy()
-rgba.putalpha(alpha)
+def from_black_tile(img):
+    """Rounded tile on solid black: keep the tile opaque, turn the black outside into transparency."""
+    im = img.convert('RGB')
+    w, h = im.size
+    px = im.load()
 
-# Un-premultiply the glow so edges don't look dark/dirty on light backgrounds.
-data = rgba.load()
-for y in range(h):
-    for x in range(w):
-        r, g, b, a = data[x, y]
-        if 0 < a < 255:
-            k = 255 / a
-            data[x, y] = (min(255, int(r * k)), min(255, int(g * k)), min(255, int(b * k)), a)
+    def edge(points):
+        for i, p in points:
+            if p[2] > 60:
+                return i
+        return None
+
+    mid_y, mid_x = h // 2, w // 2
+    left = edge((x, px[x, mid_y]) for x in range(w))
+    right = edge((x, px[x, mid_y]) for x in range(w - 1, -1, -1))
+    top = edge((y, px[mid_x, y]) for y in range(h))
+    bottom = edge((y, px[mid_x, y]) for y in range(h - 1, -1, -1))
+    print('tile edges', left, top, right, bottom)
+    radius = int((right - left) * 0.17)
+    ss = 4
+    mask = Image.new('L', (w * ss, h * ss), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([(left - 2) * ss, (top - 2) * ss, (right + 2) * ss, (bottom + 2) * ss], radius=radius * ss, fill=255)
+    mask = mask.resize((w, h), Image.LANCZOS)
+    bright = im.convert('L').point(lambda v: min(255, v * 4))
+    blue = im.getchannel('B').point(lambda v: min(255, v * 3))
+    alpha = ImageChops.lighter(mask, ImageChops.lighter(bright, blue))
+    rgba = im.copy()
+    rgba.putalpha(alpha)
+    data = rgba.load()
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = data[x, y]
+            if 0 < a < 255:
+                k = 255 / a
+                data[x, y] = (min(255, int(r * k)), min(255, int(g * k)), min(255, int(b * k)), a)
+    return rgba
+
+
+if raw.mode in ('RGBA', 'LA', 'PA') and all(raw.convert('RGBA').getpixel(c)[3] < 16 for c in corners):
+    mode, rgba = 'transparent', from_transparent(raw)
+elif sum(sum(raw.convert('RGB').getpixel(c)) for c in corners) / (len(corners) * 3) > 200:
+    mode, rgba = 'white background', from_white(raw)
+else:
+    mode, rgba = 'black tile', from_black_tile(raw)
+print('source:', mode)
 
 # Trim to content with a little padding, keep it square.
 bbox = rgba.getchannel('A').point(lambda v: 255 if v > 8 else 0).getbbox()

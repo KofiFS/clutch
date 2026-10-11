@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Film, LayoutDashboard, Play, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
+import { Film, LayoutDashboard, Monitor, Play, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
 import { StoreProvider, useStore, type Page } from './lib/store'
 import { ToastProvider } from './components/Toasts'
 import { GameIcon, Kbd } from './components/ui'
@@ -143,7 +143,7 @@ function Shell() {
               onClick={() => setPage('dashboard')}
             >
               <span className={`relative grid place-items-center w-9 h-9 rounded-full ${live ? 'ring-2 ring-live shadow-[0_0_14px_-2px_#4fe3ff]' : status.starting ? 'ring-2 ring-warn' : 'ring-1 ring-white/15'}`}>
-                {game ? <GameIcon src={game.icon ? `cf://file/${encodeURIComponent(game.icon.replace(/\\/g, '/'))}` : undefined} name={game.name} size={22} /> : <span className="w-2 h-2 rounded-full bg-ink-3" />}
+                {game && !game.isGame ? <Monitor size={18} className="text-ink-2" /> : game ? <GameIcon src={game.icon ? `cf://file/${encodeURIComponent(game.icon.replace(/\\/g, '/'))}` : undefined} name={game.name} size={22} /> : <span className="w-2 h-2 rounded-full bg-ink-3" />}
                 {status.recordingBlocked && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-warn ring-2 ring-[#060a14]" />}
               </span>
             </RailButton>

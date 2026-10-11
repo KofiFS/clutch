@@ -3,7 +3,7 @@ import { screen } from 'electron'
 import path from 'node:path'
 import type { ActivityEvent, BufferStatus, CaptureSettings, Clip, GameInfo, Settings, TriggerSource } from '../shared/types'
 import { ReplayBuffer } from './capture/replayBuffer'
-import { getForegroundApp, toGameInfo } from './capture/foreground'
+import { getForegroundApp, getWindowRect, toGameInfo } from './capture/foreground'
 import { Library } from './library'
 import type { SettingsStore } from './settings'
 import { VisionJudge } from './triggers/vision'
@@ -164,7 +164,11 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       const displays = screen.getAllDisplays()
       const d = displays[Math.min(capture.monitorIndex, displays.length - 1)] ?? screen.getPrimaryDisplay()
       this.status.since = new Date().toISOString()
-      await this.buffer.start(capture, { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) })
+      const monW = Math.round(d.size.width * d.scaleFactor)
+      const monH = Math.round(d.size.height * d.scaleFactor)
+      const { crop, label } = await this.resolveArea(capture, d, monW, monH)
+      this.status.areaLabel = label
+      await this.buffer.start(capture, { width: monW, height: monH, crop })
       this.activeCapture = capture
       this.autoStarted = reason === 'auto'
       this.voice.start()
@@ -182,6 +186,41 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.status.starting = false
       this.pushStatus()
     }
+  }
+
+  /** Turn the configured capture area into a crop rectangle on the monitor (undefined = whole monitor). */
+  private async resolveArea(capture: CaptureSettings, d: Electron.Display, monW: number, monH: number): Promise<{ crop?: { x: number; y: number; w: number; h: number }; label: string }> {
+    const area = capture.area ?? { kind: 'monitor' }
+    const even = (n: number) => Math.max(2, Math.floor(n / 2) * 2)
+    const clamp = (r: { x: number; y: number; w: number; h: number }) => {
+      const x = Math.max(0, Math.min(monW - 64, Math.round(r.x)))
+      const y = Math.max(0, Math.min(monH - 64, Math.round(r.y)))
+      const w = even(Math.min(monW - x, r.w))
+      const h = even(Math.min(monH - y, r.h))
+      // Covering (nearly) the whole monitor is the same as no crop.
+      if (w >= monW - 2 && h >= monH - 2) return undefined
+      // Offsets may be 0, so they get plain even rounding (sizes keep a minimum).
+      const evenOff = (n: number) => Math.floor(n / 2) * 2
+      return { x: evenOff(x), y: evenOff(y), w, h }
+    }
+    if (area.kind === 'region') {
+      const crop = clamp(area)
+      return { crop, label: crop ? `${area.label ?? 'Custom area'} ${crop.w}x${crop.h}` : 'Full screen' }
+    }
+    if (area.kind === 'window' || area.kind === 'game') {
+      const proc = area.kind === 'window' ? area.process : this.game.isGame ? this.game.process : ''
+      const name = area.kind === 'window' ? area.title || area.process : this.game.name
+      if (!proc) return { label: 'Full screen (no game in front yet)' }
+      const r = await getWindowRect(proc)
+      if (!r || r.minimized) {
+        this.log('info', `${name} window not found, recording the whole screen`)
+        return { label: `Full screen (${name} not open)` }
+      }
+      const sf = d.scaleFactor
+      const crop = clamp({ x: r.x - Math.round(d.bounds.x * sf), y: r.y - Math.round(d.bounds.y * sf), w: r.w, h: r.h })
+      return { crop, label: crop ? `${name} window ${crop.w}x${crop.h}` : `${name} (fullscreen)` }
+    }
+    return { label: 'Full screen' }
   }
 
   async stop(reason: 'manual' | 'auto' = 'manual') {

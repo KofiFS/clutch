@@ -5,6 +5,7 @@ import { QUALITY_PRESETS } from '../../../shared/types'
 import { startMeter } from '../lib/loopback'
 import { useStore } from '../lib/store'
 import { HotkeyInput } from '../components/HotkeyInput'
+import { CaptureAreaSettings, StorageSettings } from '../components/CaptureAreaSettings'
 import { useToast } from '../components/Toasts'
 import { Badge, Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 
@@ -71,6 +72,10 @@ export default function Settings() {
 
       <Health onFix={setPage} />
 
+      <CaptureAreaSettings />
+
+      <StorageSettings />
+
       <Section title="Quality" icon={<Gauge size={16} />} desc={encoders ? `Working encoders on this PC: ${encoders.available.join(', ')}` : 'Detecting encoders…'} right={<button className="btn-ghost text-sm" onClick={() => setAdvanced(!advanced)}>{advanced ? 'Hide advanced' : 'Advanced'}</button>}>
         <div className="grid grid-cols-4 gap-3">
           {QUALITY_PRESETS.map((p) => (
@@ -100,17 +105,6 @@ export default function Settings() {
               <select className="input" value={c.encoder} onChange={(e) => void setCap({ encoder: e.target.value as Encoder })}>
                 {(Object.keys(ENCODER_LABEL) as Encoder[]).filter((e) => e === 'auto' || !encoders || encoders.available.includes(e)).map((e) => <option key={e} value={e}>{ENCODER_LABEL[e]}</option>)}
               </select>
-            </Field>
-            <Field label="Monitor">
-              <select className="input" value={c.monitorIndex} onChange={(e) => void setCap({ monitorIndex: Number(e.target.value) })}>
-                {[0, 1, 2, 3].map((i) => <option key={i} value={i}>Monitor {i + 1}</option>)}
-              </select>
-            </Field>
-            <Field label="Save clips to">
-              <div className="flex gap-2">
-                <input className="input" readOnly value={c.outputDir} />
-                <button className="btn-icon" onClick={() => void window.cf.settings.pickFolder().then((d) => { if (d) void setCap({ outputDir: d }) })} aria-label="Choose folder"><FolderOpen size={16} /></button>
-              </div>
             </Field>
           </div>
         )}

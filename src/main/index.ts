@@ -1,9 +1,10 @@
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, nativeImage, net, Notification, protocol, session, shell } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, nativeImage, net, Notification, protocol, screen, session, shell } from 'electron'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Platform, Settings } from '../shared/types'
 import { detectEncoders, listAudioDevices, trimClip } from './capture/ffmpeg'
 import { disposeForegroundWatcher, listRunningApps } from './capture/foreground'
+import { pickRegion } from './capture/regionPicker'
 import { checkWebhook, makeShareable, postClip } from './share/discord'
 import { clipOfTheDay, DailyDigest } from './highlights'
 import { healthCheck } from './health'
@@ -255,6 +256,12 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('system:testOverlay', () => overlay?.show('Clipped!', 'This is how it looks in game', 'clip'))
   ipcMain.handle('system:canAcrylic', () => canAcrylic)
+  ipcMain.handle('capture:monitors', () => screen.getAllDisplays().map((d, i) => ({ index: i, label: d.label || `Monitor ${i + 1}`, width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor), primary: d.id === screen.getPrimaryDisplay().id })))
+  ipcMain.handle('capture:pickRegion', async (_e, monitorIndex: number) => {
+    win?.hide()
+    try { return await pickRegion(monitorIndex) } finally { showWindow() }
+  })
+  ipcMain.handle('capture:restart', async () => { await recorder.stop('manual'); await recorder.start('manual') })
   ipcMain.handle('window:minimize', () => win?.minimize())
   ipcMain.handle('window:hide', () => win?.hide())
 

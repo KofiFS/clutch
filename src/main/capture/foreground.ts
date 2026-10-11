@@ -113,7 +113,7 @@ export function disposeForegroundWatcher() {
 }
 
 const SYSTEM_PROCS = new Set([
-  'explorer', 'clipforge', 'electron', 'searchhost', 'startmenuexperiencehost', 'lockapp', 'shellexperiencehost',
+  'explorer', 'clipforge', 'clutch', 'electron', 'searchhost', 'startmenuexperiencehost', 'lockapp', 'shellexperiencehost',
   'applicationframehost', 'textinputhost', 'systemsettings', 'taskmgr', 'dwm', ''
 ])
 
@@ -156,7 +156,8 @@ export async function toGameInfo(fg: ForegroundApp, allowlist: string[]): Promis
     name: gameNameFrom(fg),
     process: fg.process.toLowerCase(),
     exePath: fg.exePath || undefined,
-    icon: fg.exePath ? await cachedIcon(fg.process, fg.exePath) : undefined,
+    // No icon for the desktop / Clutch itself: the UI shows a monitor glyph instead of e.g. the Electron logo.
+    icon: fg.exePath && !isSystemProcess(fg.process) ? await cachedIcon(fg.process, fg.exePath) : undefined,
     fullscreen: fg.fullscreen,
     isGame: looksLikeGame(fg, allowlist)
   }
@@ -215,3 +216,39 @@ export function listRunningApps(): Promise<RunningApp[]> {
 }
 
 export { nativeImage }
+
+export interface WindowRect {
+  x: number
+  y: number
+  w: number
+  h: number
+  minimized: boolean
+}
+
+/** Screen rectangle (physical pixels, without the invisible resize border) of a process's main window. */
+export function getWindowRect(processName: string): Promise<WindowRect | null> {
+  const name = processName.replace(/\.exe$/i, '').replace(/[^\w.\- ]/g, '')
+  if (!name) return Promise.resolve(null)
+  const script = [
+    'Add-Type @"',
+    'using System; using System.Runtime.InteropServices;',
+    'public struct WRECT { public int L; public int T; public int R; public int B; }',
+    'public class WR {',
+    '  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out WRECT r, int s);',
+    '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out WRECT r);',
+    '  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);',
+    '}',
+    '"@',
+    `$p = Get-Process -Name '${name}' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1`,
+    'if ($p) { $r = New-Object WRECT; if ([WR]::DwmGetWindowAttribute($p.MainWindowHandle, 9, [ref]$r, 16) -ne 0) { [WR]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null }; Write-Output ("{0}|{1}|{2}|{3}|{4}" -f $r.L, $r.T, $r.R, $r.B, [WR]::IsIconic($p.MainWindowHandle)) }'
+  ].join(String.fromCharCode(10))
+  return new Promise((resolve) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 8000 }, (_err, stdout) => {
+      const line = String(stdout).trim().split(LINE_BREAK).pop() ?? ''
+      const [l, t, r, b, min] = line.split('|')
+      const L = Number(l), T = Number(t), R = Number(r), B = Number(b)
+      if (!Number.isFinite(L) || R - L < 2 || B - T < 2) return resolve(null)
+      resolve({ x: L, y: T, w: R - L, h: B - T, minimized: (min ?? '').trim() === 'True' })
+    })
+  })
+}

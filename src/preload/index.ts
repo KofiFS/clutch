@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ActivityEvent, BufferStatus, Clip, GameInfo, GameSummary, HealthItem, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
+import type { ActivityEvent, BufferStatus, Clip, GameInfo, GameSummary, HealthItem, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
 
 export interface LibraryQuery {
   text?: string
@@ -37,6 +37,11 @@ const api = {
     testOverlay: () => ipcRenderer.invoke('system:testOverlay'),
     canAcrylic: (): Promise<boolean> => ipcRenderer.invoke('system:canAcrylic'),
     canLaunchAtLogin: (): Promise<boolean> => ipcRenderer.invoke('system:canLaunchAtLogin')
+  },
+  capture: {
+    monitors: (): Promise<MonitorInfo[]> => ipcRenderer.invoke('capture:monitors'),
+    pickRegion: (monitorIndex: number): Promise<{ x: number; y: number; w: number; h: number } | null> => ipcRenderer.invoke('capture:pickRegion', monitorIndex),
+    restart: (): Promise<void> => ipcRenderer.invoke('capture:restart')
   },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
