@@ -35,7 +35,11 @@ export class SettingsStore {
 
   set(patch: Partial<Settings>): Settings {
     const prev = this.data
-    this.data = syncAudio(prev, deepMerge(prev, patch) as Settings)
+    const merged = deepMerge(prev, patch) as Settings
+    // Values that must be replaced, not merged: a one-of type (area) and a map where removing a key matters (profiles).
+    if (patch.capture?.area) merged.capture = { ...merged.capture, area: patch.capture.area }
+    if (patch.profiles) merged.profiles = patch.profiles
+    this.data = syncAudio(prev, merged)
     fs.mkdirSync(path.dirname(this.file), { recursive: true })
     fs.writeFileSync(this.file, JSON.stringify(this.data, null, 2))
     for (const l of this.listeners) l(this.data)
