@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, screen, type Rectangle } from 'electron'
 
 /**
  * A tiny click-through, always-on-top window that flashes "Clipped!" in the corner of the game.
@@ -7,6 +7,8 @@ import { BrowserWindow, screen } from 'electron'
 export class OverlayToast {
   private win: BrowserWindow | null = null
   private hideTimer: NodeJS.Timeout | null = null
+  /** Something already in the top-right corner (the recording widget); the toast goes under it. */
+  avoid: () => Rectangle | null = () => null
 
   private ensure(): BrowserWindow {
     if (this.win && !this.win.isDestroyed()) return this.win
@@ -24,6 +26,8 @@ export class OverlayToast {
       webPreferences: { sandbox: true, contextIsolation: true }
     })
     w.setIgnoreMouseEvents(true)
+    // Shown on screen, never in the recording.
+    w.setContentProtection(true)
     w.setAlwaysOnTop(true, 'screen-saver')
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     void w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(HTML))
@@ -35,7 +39,9 @@ export class OverlayToast {
     const w = this.ensure()
     const d = screen.getPrimaryDisplay()
     const { x, y, width } = d.workArea
-    w.setPosition(x + width - 320 - 24, y + 24)
+    const busy = this.avoid()
+    if (busy) w.setPosition(Math.round(busy.x + busy.width - 320), Math.round(busy.y + busy.height - 4))
+    else w.setPosition(x + width - 320 - 24, y + 24)
     const payload = JSON.stringify({ title, subtitle, kind })
     const run = () => {
       w.webContents.executeJavaScript(`window.showToast(${payload})`).catch(() => undefined)

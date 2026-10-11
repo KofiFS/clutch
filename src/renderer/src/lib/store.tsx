@@ -95,10 +95,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!settings) return
     if (status.running && settings.capture.systemAudio && !loopbackActive()) {
       startLoopback().then(() => setLoopbackError(null)).catch((e) => setLoopbackError(String(e?.message ?? e)))
-    } else if (!status.running && loopbackActive()) {
+    } else if (!status.running && !status.paused && loopbackActive()) {
       stopLoopback()
     }
-  }, [status.running, settings])
+  }, [status.running, status.paused, settings])
 
   const save = useCallback(async (patch: Partial<Settings>) => setSettings(await window.cf.settings.set(patch)), [])
   const start = useCallback(async () => {

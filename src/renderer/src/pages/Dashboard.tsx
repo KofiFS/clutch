@@ -44,11 +44,11 @@ export default function Dashboard() {
             size={150}
             tone={status.running ? 'cyan' : 'violet'}
             label={status.running ? `${Math.min(status.bufferedSeconds ?? 0, settings.capture.bufferSeconds)}s` : '--'}
-            sub={status.running ? `of ${settings.capture.bufferSeconds}s ready` : 'standby'}
+            sub={status.running ? `of ${settings.capture.bufferSeconds}s ready` : status.paused ? 'paused' : 'standby'}
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5 mb-3">
-              {status.running ? <Badge tone="live"><span className="w-1.5 h-1.5 rounded-full bg-live pulse-dot" /> Recording</Badge> : <Badge>Standby</Badge>}
+              {status.paused ? <Badge tone="warn">Paused</Badge> : status.running ? <Badge tone="live"><span className="w-1.5 h-1.5 rounded-full bg-live pulse-dot" /> Recording</Badge> : <Badge>Standby</Badge>}
               {game && (
                 <span className="flex items-center gap-1.5 text-sm text-ink-2 min-w-0">
                   {game.isGame ? <GameIcon src={game.icon ? fileUrl(game.icon) : undefined} name={game.name} size={18} /> : <Monitor size={16} className="text-ink-3" />}
@@ -57,15 +57,19 @@ export default function Dashboard() {
               )}
             </div>
             <h1 className="text-[28px] leading-tight font-semibold tracking-tight">
-              {status.running ? 'Ready to clip.' : settings.app.autoStart === 'games' ? 'Open a game. Recording starts by itself.' : 'Start recording, then clip what matters.'}
+              {status.paused ? 'Recording paused.' : status.running ? 'Ready to clip.' : settings.app.autoStart === 'games' ? 'Open a game. Recording starts by itself.' : 'Start recording, then clip what matters.'}
             </h1>
             <p className="text-ink-2 mt-2 text-sm font-hud tracking-[0.06em] text-[12px]">
-              {status.running
+              {status.paused
+                ? 'NOTHING IS BEING RECORDED · WHAT YOU ALREADY HAVE IS KEPT'
+                : status.running
                 ? `${status.resolution} · ${status.fps} FPS · ${String(status.encoder ?? '').toUpperCase()}`
                 : status.lastError ? 'The last recording stopped with an error. Details below.' : `HOTKEY ${settings.capture.clipHotkey || 'NOT SET'} · ${settings.capture.preSeconds}S BACK + ${settings.capture.postSeconds}S`}
             </p>
             <div className="flex items-center gap-2.5 mt-6">
-              {status.running ? (
+              {status.paused ? (
+                <button className="btn-primary px-6 h-11" onClick={() => void window.cf.buffer.togglePause()}>Resume recording</button>
+              ) : status.running ? (
                 <button className="btn-live px-6 h-11" onClick={() => void clipNow()}><Zap size={16} /> Clip the last {settings.capture.preSeconds}s {settings.capture.clipHotkey && <Kbd>{settings.capture.clipHotkey}</Kbd>}</button>
               ) : (
                 <button className="btn-primary px-6 h-11" disabled={status.starting} onClick={() => void start()}>{status.starting ? 'Starting…' : 'Start recording'}</button>

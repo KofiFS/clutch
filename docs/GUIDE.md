@@ -14,6 +14,21 @@
 Allow/block lists and per-game profiles are under "What to clip". Lists only affect automatic
 triggers; the hotkey always works.
 
+## Mini controller while recording
+
+When recording starts, Clutch tucks itself away and a small controller appears in the top-right
+corner. Only you see it: Windows leaves it (and the "Clipped!" popup) out of every screen capture,
+so it never shows up in clips.
+
+- **Buttons:** Clip, Pause/Resume, Stop, and Expand.
+- **Double-click** it (or press Expand) to see a still from the actual recording, what is being
+  captured, the video settings and live audio meters. Double-click again to shrink it.
+- **Pause** stops capturing completely. What is already in the buffer and any long recording are
+  kept, and the paused time is left out of the long recording. Clip while paused saves the moments
+  right before the pause.
+- **Drag** it anywhere; it remembers the spot. **Open Clutch** brings the full window back.
+- Turn it off under Settings → Notifications & window → "Shrink to a mini controller while recording".
+
 ## Recording area and audio
 
 - **Settings → Recording area:** Full screen, Game window (crops to the game in front when recording starts),

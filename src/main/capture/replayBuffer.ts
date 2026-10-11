@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CaptureSettings, Encoder } from '../../shared/types'
-import { detectEncoders, ffmpegPath, run } from './ffmpeg'
+import { detectEncoders, ffmpegPath, ffprobePath, run } from './ffmpeg'
 
 const SEG_SECONDS = 2
 const SYS_RATE = 48000
@@ -16,6 +16,8 @@ export interface SaveRequest {
   endMs: number
   /** Destination mp4 path. */
   outFile: string
+  /** Save from the segments on disk even though FFmpeg is stopped (recording paused). */
+  allowStopped?: boolean
 }
 
 export interface BufferEvents {
@@ -163,7 +165,24 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       }
     })
     this.cleanup()
+    await this.dropBrokenTail()
     this.emit('status', { running: false })
+  }
+
+  /**
+   * Ending FFmpeg mid-segment (always the case with system audio, since it is killed) can leave the
+   * newest segment unreadable. One bad file makes every later clip export stop at it, cutting off
+   * whatever was recorded after a pause or restart, so remove it. Costs at most the last 2 s.
+   */
+  private async dropBrokenTail() {
+    const segs = this.listSegments()
+    const last = segs[segs.length - 1]
+    if (!last) return
+    const r = await run(ffprobePath(), ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', last.file], { timeoutMs: 5000 })
+    const dur = parseFloat(r.stdout)
+    if (r.code !== 0 || !(dur > 0.2)) {
+      try { fs.unlinkSync(last.file) } catch { /* already gone */ }
+    }
   }
 
   private cleanup() {
@@ -353,6 +372,19 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     }
   }
 
+  /**
+   * Write a small JPEG of the newest finished segment's first frame: a preview of exactly what is in
+   * the recording (crop, scale and all), a couple of seconds behind live.
+   */
+  async previewFrame(outFile: string): Promise<{ ok: boolean; atMs: number }> {
+    const segs = this.listSegments()
+    const seg = this.running ? segs[segs.length - 2] : segs[segs.length - 1]
+    if (!seg) return { ok: false, atMs: 0 }
+    try { fs.unlinkSync(outFile) } catch { /* none yet */ }
+    const r = await run(ffmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-i', seg.file, '-frames:v', '1', '-vf', 'scale=480:-2:out_range=full,format=yuvj420p', '-q:v', '5', outFile], { timeoutMs: 8000 })
+    return { ok: r.code === 0 && fs.existsSync(outFile), atMs: seg.birthMs }
+  }
+
   /** Oldest moment still available in the buffer (wall-clock ms), or null if empty. */
   oldestAvailableMs(): number | null {
     const segs = this.listSegments()
@@ -364,22 +396,28 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
    * Waits for the future part of the range to be recorded first.
    */
   async saveRange(req: SaveRequest): Promise<{ file: string; actualStartMs: number }> {
-    if (!this.running) throw new Error('Replay buffer is not running')
+    // While paused FFmpeg is stopped, but every segment on disk is complete and can be saved.
+    const live = this.running
+    if (!live && !req.allowStopped) throw new Error('Replay buffer is not running')
     this.pendingSaves++
     try {
       const readyAt = req.endMs + (SEG_SECONDS + 0.75) * 1000
-      if (Date.now() < readyAt) await new Promise((r) => setTimeout(r, readyAt - Date.now()))
-      if (!this.running) throw new Error('Replay buffer stopped while saving')
+      if (live && Date.now() < readyAt) await new Promise((r) => setTimeout(r, readyAt - Date.now()))
+      if (live && !this.running) throw new Error('Replay buffer stopped while saving')
 
       const segs = this.listSegments()
-      const last = segs[segs.length - 1]
+      // The newest segment is still being written while recording.
+      const last = live ? segs[segs.length - 1] : undefined
       const chosen = segs.filter((sg) => sg !== last && sg.birthMs + SEG_SECONDS * 1000 > req.startMs && sg.birthMs < req.endMs)
       if (!chosen.length) throw new Error('No buffered video covers that range yet')
 
       const listFile = path.join(this.segDir, `clip-${Date.now()}.txt`)
       fs.writeFileSync(listFile, chosen.map((sg) => `file '${sg.file.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'))
-      const offsetSec = Math.max(0, (req.startMs - chosen[0].birthMs) / 1000)
-      const durationSec = (req.endMs - req.startMs) / 1000
+      // Every segment starts on a keyframe. Seeking into the middle of one with stream copy gives a
+      // clip whose first seconds have sound but no picture, so start on the segment boundary instead.
+      const offsetSec = Math.floor(Math.max(0, (req.startMs - chosen[0].birthMs) / 1000) / SEG_SECONDS) * SEG_SECONDS
+      // Measured from where the clip really starts, so the end of the range is not cut off.
+      const durationSec = (req.endMs - (chosen[0].birthMs + offsetSec * 1000)) / 1000
       fs.mkdirSync(path.dirname(req.outFile), { recursive: true })
       const r = await run(ffmpegPath(), [
         '-hide_banner', '-loglevel', 'error', '-y',

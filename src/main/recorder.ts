@@ -13,6 +13,7 @@ import { HypeDetector } from './triggers/hype'
 import { suggestTitle } from './triggers/titler'
 
 const VISION_COOLDOWN_MS = 20_000
+const fmtDuration = (ms: number) => { const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)} min ${s % 60}s` }
 const GAME_POLL_MS = 3000
 
 export interface RecorderEvents {
@@ -24,6 +25,8 @@ export interface RecorderEvents {
   game: [GameInfo]
   /** Short confirmation for hotkey actions, shown over the game. */
   notice: [{ title: string; sub: string; kind: 'clip' | 'info' | 'error' }]
+  /** A new session was started because a game came to the front. */
+  autoStarted: []
 }
 
 /**
@@ -48,7 +51,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   private starting = false
   private activeCapture: CaptureSettings | null = null
   private pendingRanges: { startMs: number; endMs: number }[] = []
-  private long: { startMs: number; bookmarks: number[]; game: GameInfo } | null = null
+  private long: { startMs: number; bookmarks: number[]; game: GameInfo; pauses: { from: number; to: number }[] } | null = null
+  /** Set while the user has paused recording: FFmpeg is stopped but the buffer and long recording are kept. */
+  private paused: { at: number; elapsedMs: number; auto: boolean } | null = null
 
   constructor(private settings: SettingsStore, dataDir: string) {
     super()
@@ -67,7 +72,8 @@ export class Recorder extends EventEmitter<RecorderEvents> {
         resolution: st.resolution ?? this.status.resolution,
         fps: st.fps ?? this.status.fps,
         lastError: st.error,
-        since: st.running ? this.status.since ?? new Date().toISOString() : undefined
+        // A pause keeps the session clock (the widget shows time recorded, not time since start).
+        since: st.running ? this.status.since ?? new Date().toISOString() : this.paused ? this.status.since : undefined
       }
       if (st.error) this.log('error', st.error)
       if (!st.running) { this.voice.stop(); this.status.talking = false; this.activeCapture = null }
@@ -166,8 +172,10 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     return { ...s.capture, ...overrides }
   }
 
-  async start(reason: 'manual' | 'auto' = 'manual') {
-    if (this.starting || this.status.running) return
+  async start(reason: 'manual' | 'auto' = 'manual', opts: { resume?: { sinceMs: number } } = {}): Promise<boolean> {
+    if (this.starting || this.status.running) return this.status.running
+    // Starting while paused is a resume.
+    if (this.paused && !opts.resume) return this.resume()
     this.starting = true
     this.status.starting = true
     this.status.lastError = undefined
@@ -177,7 +185,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     try {
       const displays = screen.getAllDisplays()
       const d = displays[Math.min(capture.monitorIndex, displays.length - 1)] ?? screen.getPrimaryDisplay()
-      this.status.since = new Date().toISOString()
+      this.status.since = new Date(opts.resume?.sinceMs ?? Date.now()).toISOString()
       const monW = Math.round(d.size.width * d.scaleFactor)
       const monH = Math.round(d.size.height * d.scaleFactor)
       const { crop, label } = await this.resolveArea(capture, d, monW, monH)
@@ -190,24 +198,64 @@ export class Recorder extends EventEmitter<RecorderEvents> {
         for (const m of missing) this.log('info', `${m.name} (${m.device}) is not plugged in - recording without it`)
       } else this.buffer.missingSources = []
       this.status.areaLabel = label
-      await this.buffer.start(capture, { width: monW, height: monH, crop })
+      await this.buffer.start(capture, { width: monW, height: monH, crop }, { restart: !!opts.resume })
       this.activeCapture = capture
       this.autoStarted = reason === 'auto'
       this.voice.start()
       this.hype.reset()
       this.vision.reset()
       const profileNote = s.profiles[this.game.process] ? ` using the ${s.profiles[this.game.process].name} profile` : ''
-      this.log('info', `Recording started${reason === 'auto' ? ` for ${this.game.name}` : ''} (${this.buffer.encoder}, ${this.buffer.resolution} @ ${capture.fps} fps, keeps ${capture.bufferSeconds}s)${profileNote}`)
+      if (!opts.resume) this.log('info', `Recording started${reason === 'auto' ? ` for ${this.game.name}` : ''} (${this.buffer.encoder}, ${this.buffer.resolution} @ ${capture.fps} fps, keeps ${capture.bufferSeconds}s)${profileNote}`)
+      return true
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       this.status = { ...this.status, running: false, starting: false, lastError: msg }
       this.log('error', msg)
       this.pushStatus()
+      return false
     } finally {
       this.starting = false
       this.status.starting = false
       this.pushStatus()
     }
+  }
+
+  get isPaused() {
+    return !!this.paused
+  }
+
+  /**
+   * Pause: stop capturing (nothing new is recorded) but keep what is already in the buffer and any
+   * long recording, so clips and the session carry on after `resume`.
+   */
+  async pause() {
+    if (this.paused || this.starting || !this.buffer.running) return
+    const at = Date.now()
+    const since = this.status.since ? Date.parse(this.status.since) : at
+    this.paused = { at, elapsedMs: Math.max(0, at - since), auto: this.autoStarted }
+    this.status.paused = { since: new Date(at).toISOString() }
+    await this.buffer.stop()
+    this.log('info', 'Recording paused - nothing is captured until you resume')
+    this.emit('notice', { title: 'Recording paused', sub: 'Nothing is recorded until you resume', kind: 'info' })
+    this.pushStatus()
+  }
+
+  async resume(): Promise<boolean> {
+    const p = this.paused
+    if (!p) return this.status.running
+    const ok = await this.start(p.auto ? 'auto' : 'manual', { resume: { sinceMs: Date.now() - p.elapsedMs } })
+    if (!ok) return false
+    this.paused = null
+    this.status.paused = undefined
+    this.long?.pauses.push({ from: p.at, to: Date.now() })
+    this.log('info', `Recording resumed after ${fmtDuration(Date.now() - p.at)}`)
+    this.emit('notice', { title: 'Recording resumed', sub: this.long ? 'Long recording continues' : 'Replay buffer is running again', kind: 'info' })
+    this.pushStatus()
+    return true
+  }
+
+  async togglePause() {
+    return this.paused ? this.resume() : this.pause()
   }
 
   /** Turn the configured capture area into a crop rectangle on the monitor (undefined = whole monitor). */
@@ -246,9 +294,13 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   }
 
   async stop(reason: 'manual' | 'auto' = 'manual') {
-    if (!this.status.running && !this.buffer.running) return
+    if (!this.status.running && !this.buffer.running && !this.paused) return
     if (this.long) await this.stopLong()
+    const wasPaused = !!this.paused
+    this.paused = null
+    this.status.paused = undefined
     await this.buffer.stop()
+    if (wasPaused) { this.status.since = undefined; this.pushStatus() }
     this.voice.stop()
     this.autoStarted = false
     this.log('info', reason === 'auto' ? 'Recording stopped - no game open' : 'Recording stopped')
@@ -281,10 +333,10 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.status.recordingBlocked = blocked
 
     // Auto start / stop
-    if (s.app.autoStart === 'games' && info.isGame && !blocked && !this.status.running && !this.starting) {
+    if (s.app.autoStart === 'games' && info.isGame && !blocked && !this.status.running && !this.starting && !this.paused) {
       this.log('game', `Starting recording for ${info.name}`)
-      await this.start('auto')
-    } else if (this.autoStarted && this.status.running && s.app.autoStopMinutes > 0 && Date.now() - this.lastGameSeenAt > s.app.autoStopMinutes * 60_000) {
+      if (await this.start('auto')) this.emit('autoStarted')
+    } else if (this.autoStarted && (this.status.running || this.paused) && s.app.autoStopMinutes > 0 && Date.now() - this.lastGameSeenAt > s.app.autoStopMinutes * 60_000) {
       await this.stop('auto')
     }
 
@@ -314,8 +366,10 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   /** Hotkey / manual: clip the last `preSeconds` plus the next `postSeconds`. */
   async clipNow(trigger: TriggerSource = 'hotkey', seconds?: number) {
     const c = this.effectiveCapture()
-    const now = Date.now()
     const back = Math.min(seconds ?? c.preSeconds, c.bufferSeconds)
+    // Paused: nothing new is coming, so clip the moments right before the pause.
+    if (this.paused) return this.clipRange(this.paused.at - back * 1000, this.paused.at, trigger)
+    const now = Date.now()
     return this.clipRange(now - back * 1000, now + c.postSeconds * 1000, trigger)
   }
 
@@ -326,13 +380,14 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   /** Full-session recording: keep every segment from now until it is stopped, then save one file. */
   async startLong() {
     if (this.long) return
+    if (this.paused) await this.resume()
     if (!this.status.running) await this.start('manual')
     if (!this.buffer.running) {
       this.emit('notice', { title: 'Could not start recording', sub: 'Check the Home page for details', kind: 'error' })
       return
     }
     const startMs = Date.now()
-    this.long = { startMs, bookmarks: [], game: this.game }
+    this.long = { startMs, bookmarks: [], game: this.game, pauses: [] }
     this.buffer.holdFromMs = startMs
     this.status.longRecording = { since: new Date(startMs).toISOString(), bookmarks: 0, game: this.game.name }
     const keys = this.settings.get().capture
@@ -347,16 +402,20 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.long = null
     this.status.longRecording = undefined
     this.pushStatus()
-    const endMs = Date.now()
-    const mins = Math.round((endMs - l.startMs) / 60000)
+    const endMs = this.paused?.at ?? Date.now()
+    const pauses = this.paused ? [...l.pauses, { from: this.paused.at, to: endMs }] : l.pauses
+    const pausedMs = pauses.reduce((n, x) => n + (x.to - x.from), 0)
+    const mins = Math.round((endMs - l.startMs - pausedMs) / 60000)
     this.emit('notice', { title: 'Saving long recording…', sub: `${mins < 1 ? 'Under a minute' : `${mins} min`}${l.bookmarks.length ? ` · ${l.bookmarks.length} bookmark${l.bookmarks.length > 1 ? 's' : ''}` : ''}`, kind: 'info' })
     const c = this.settings.get().capture
     const safeGame = l.game.name.replace(/[^\w\- ]+/g, '').trim() || 'Recording'
     const stamp = new Date(l.startMs).toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const outFile = path.join(c.outputDir, safeGame, `${safeGame} Long ${stamp}.mp4`)
     try {
-      const { file, actualStartMs } = await this.buffer.saveRange({ startMs: l.startMs, endMs, outFile })
-      const bookmarks = l.bookmarks.map((b) => Math.max(0, (b - actualStartMs) / 1000))
+      const { file, actualStartMs } = await this.buffer.saveRange({ startMs: l.startMs, endMs, outFile, allowStopped: !!this.paused })
+      // Paused stretches are not in the file, so bookmarks after a pause move back by its length.
+      const pausedBefore = (t: number) => pauses.reduce((n, x) => n + (x.to <= t ? x.to - x.from : 0), 0)
+      const bookmarks = l.bookmarks.map((b) => Math.max(0, (b - actualStartMs - pausedBefore(b)) / 1000))
       const clip = await this.library.add(file, { game: l.game.name, gameProcess: l.game.process || undefined, gameIcon: l.game.icon, trigger: 'long', title: `${l.game.isGame ? l.game.name : 'Session'} · ${new Date(l.startMs).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, bookmarks })
       const len = `${Math.floor(clip.durationSec / 60)}:${String(Math.round(clip.durationSec % 60)).padStart(2, "0")}`
       this.log('clip', `Saved long recording "${clip.title}" (${len}, ${bookmarks.length} bookmark${bookmarks.length === 1 ? "" : "s"})`, clip.id)
@@ -382,7 +441,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     }
     this.long.bookmarks.push(Date.now())
     const n = this.long.bookmarks.length
-    const t = Math.round((Date.now() - this.long.startMs) / 1000)
+    const t = Math.round((Date.now() - this.long.startMs - this.long.pauses.reduce((n, x) => n + (x.to - x.from), 0)) / 1000)
     this.status.longRecording = { ...this.status.longRecording!, bookmarks: n }
     this.emit('notice', { title: `Bookmark ${n}`, sub: `at ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} in this recording`, kind: 'clip' })
     this.pushStatus()
@@ -428,7 +487,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   }
 
   async clipRange(startMs: number, endMs: number, trigger: TriggerSource, meta: { event?: string; title?: string; hypeDb?: number } = {}) {
-    if (!this.buffer.running) {
+    if (!this.buffer.running && !this.paused) {
       this.log('error', 'Cannot clip: recording is not running')
       return
     }
@@ -449,7 +508,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     const outFile = path.join(c.outputDir, safeGame, `${safeGame} ${stamp}.mp4`)
     this.log('info', `Saving ${trigger === 'manual' ? '' : trigger + ' '}clip (${Math.round((endMs - startMs) / 1000)}s)…`)
     try {
-      const { file } = await this.buffer.saveRange({ startMs, endMs, outFile })
+      const { file } = await this.buffer.saveRange({ startMs, endMs, outFile, allowStopped: !!this.paused })
       const clip = await this.library.add(file, { game: game.name, gameProcess: game.process || undefined, gameIcon: game.icon, trigger, event: meta.event, title: meta.title, hypeDb: meta.hypeDb })
       this.log('clip', `Saved "${clip.title}" (${Math.round(clip.durationSec)}s)`, clip.id)
       this.emit('clip', clip)

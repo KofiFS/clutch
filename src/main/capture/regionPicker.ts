@@ -31,6 +31,7 @@ export async function pickRegion(monitorIndex: number): Promise<Rect | null> {
     webPreferences: { sandbox: true, contextIsolation: true }
   })
   win.setAlwaysOnTop(true, 'screen-saver')
+  win.setContentProtection(true)
   await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(HTML))
   win.show()
   win.focus()

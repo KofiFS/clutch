@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Film, LayoutDashboard, Monitor, Play, Search, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
+import { Film, LayoutDashboard, Monitor, Pause, Play, Search, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
 import { StoreProvider, useStore, type Page } from './lib/store'
 import { ToastProvider } from './components/Toasts'
 import { GameIcon, Kbd } from './components/ui'
@@ -37,7 +37,8 @@ function StatusStrip() {
   const c = settings.capture
   const elapsed = long ? Math.floor((Date.now() - Date.parse(long.since)) / 1000) : 0
   const hms = `${Math.floor(elapsed / 3600) ? `${Math.floor(elapsed / 3600)}:` : ''}${String(Math.floor((elapsed % 3600) / 60)).padStart(Math.floor(elapsed / 3600) ? 2 : 1, '0')}:${String(elapsed % 60).padStart(2, '0')}`
-  const state = long ? `Long recording ${hms}` : status.running ? `Recording${game?.isGame ? ` · ${game.name}` : ''}` : status.starting ? 'Starting…' : 'Waiting for game'
+  const paused = !!status.paused
+  const state = paused ? 'Paused · nothing is being recorded' : long ? `Long recording ${hms}` : status.running ? `Recording${game?.isGame ? ` · ${game.name}` : ''}` : status.starting ? 'Starting…' : 'Waiting for game'
   const Key = ({ k, label, onClick, active }: { k: string; label: string; onClick?: () => void; active?: boolean }) =>
     k ? (
       <button onClick={onClick} className={`no-drag flex items-center gap-1.5 h-7 px-2 rounded-full text-[12px] transition-colors ${active ? 'text-ink bg-white/10' : 'text-ink-2 hover:text-ink hover:bg-white/[0.07]'}`}>
@@ -47,11 +48,16 @@ function StatusStrip() {
     ) : null
   return (
     <div className="flex items-center gap-1 ml-6 min-w-0">
-      <span className={`flex items-center gap-2 h-7 px-3 rounded-full text-[12px] font-medium shrink-0 ${long ? 'text-[#ff8aa1] bg-[#ff3b5c]/12' : status.running ? 'text-live bg-live/10' : 'text-ink-2 bg-white/[0.05]'}`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${long ? 'bg-[#ff3b5c] shadow-[0_0_8px_#ff3b5c]' : status.running ? 'bg-live shadow-[0_0_8px_#4fe3ff]' : 'bg-ink-3'}`} />
+      <span className={`flex items-center gap-2 h-7 px-3 rounded-full text-[12px] font-medium shrink-0 ${paused ? 'text-warn bg-warn/10' : long ? 'text-[#ff8aa1] bg-[#ff3b5c]/12' : status.running ? 'text-live bg-live/10' : 'text-ink-2 bg-white/[0.05]'}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${paused ? 'bg-warn' : long ? 'bg-[#ff3b5c] shadow-[0_0_8px_#ff3b5c]' : status.running ? 'bg-live shadow-[0_0_8px_#4fe3ff]' : 'bg-ink-3'}`} />
         <span className="tabular">{state}</span>
         {long && long.bookmarks > 0 && <span className="text-ink-3">· {long.bookmarks} bookmark{long.bookmarks > 1 ? 's' : ''}</span>}
       </span>
+      {paused && (
+        <button onClick={() => void window.cf.buffer.togglePause()} className="no-drag flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-medium text-[#1a1200] bg-warn hover:brightness-110 transition">
+          <Play size={12} fill="currentColor" /> Resume
+        </button>
+      )}
       <Key k={c.clipHotkey} label="Clip" onClick={() => void window.cf.buffer.clipNow()} />
       <Key k={c.longRecordHotkey} label={long ? 'Stop long recording' : 'Long recording'} active={!!long} onClick={() => void window.cf.buffer.toggleLong()} />
       {long && <Key k={c.bookmarkHotkey} label="Bookmark" onClick={() => void window.cf.buffer.bookmark()} />}
@@ -132,6 +138,7 @@ function Shell() {
   if (!settings.app.onboarded) return <><Backdrop /><Onboarding /></>
 
   const live = status.running
+  const paused = !!status.paused
   return (
     <div className="h-full flex flex-col">
       <Backdrop live={live} />
@@ -152,20 +159,31 @@ function Shell() {
           <div className="relative z-[2] mt-auto flex flex-col items-center gap-2.5">
             {/* Status orb: the current app/game, ringed by recording state */}
             <RailButton
-              label={live ? `Recording${game ? ` · ${game.name}` : ''}` : status.starting ? 'Starting…' : `Standby${game ? ` · ${game.name}` : ''}`}
+              label={paused ? 'Recording paused' : live ? `Recording${game ? ` · ${game.name}` : ''}` : status.starting ? 'Starting…' : `Standby${game ? ` · ${game.name}` : ''}`}
               hint={live && status.bufferedSeconds !== undefined ? `${Math.min(status.bufferedSeconds, settings.capture.bufferSeconds)}s ready to clip` : status.recordingBlocked}
               onClick={() => setPage('dashboard')}
             >
-              <span className={`relative grid place-items-center w-9 h-9 rounded-full ${live ? 'ring-2 ring-live shadow-[0_0_14px_-2px_#4fe3ff]' : status.starting ? 'ring-2 ring-warn' : 'ring-1 ring-white/15'}`}>
+              <span className={`relative grid place-items-center w-9 h-9 rounded-full ${paused ? 'ring-2 ring-warn' : live ? 'ring-2 ring-live shadow-[0_0_14px_-2px_#4fe3ff]' : status.starting ? 'ring-2 ring-warn' : 'ring-1 ring-white/15'}`}>
                 {game && !game.isGame ? <Monitor size={18} className="text-ink-2" /> : game ? <GameIcon src={game.icon ? `cf://file/${encodeURIComponent(game.icon.replace(/\\/g, '/'))}` : undefined} name={game.name} size={22} /> : <span className="w-2 h-2 rounded-full bg-ink-3" />}
                 {status.recordingBlocked && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-warn ring-2 ring-[#060a14]" />}
               </span>
             </RailButton>
-            {live ? (
+            {live || paused ? (
               <>
-                <RailButton label="Clip now" hint={settings.capture.clipHotkey || undefined} onClick={() => void clipNow()} variant="live">
-                  <Zap size={20} />
-                </RailButton>
+                {paused ? (
+                  <RailButton label="Resume recording" onClick={() => void window.cf.buffer.togglePause()} variant="primary">
+                    <Play size={20} className="ml-0.5" />
+                  </RailButton>
+                ) : (
+                  <>
+                    <RailButton label="Clip now" hint={settings.capture.clipHotkey || undefined} onClick={() => void clipNow()} variant="live">
+                      <Zap size={20} />
+                    </RailButton>
+                    <RailButton label="Pause recording" hint="Keeps what is recorded so far" onClick={() => void window.cf.buffer.togglePause()}>
+                      <Pause size={17} className="text-ink-2 group-hover:text-ink" />
+                    </RailButton>
+                  </>
+                )}
                 <RailButton label="Stop recording" onClick={() => void stop()}>
                   <Square size={16} className="text-ink-2 group-hover:text-ink" />
                 </RailButton>

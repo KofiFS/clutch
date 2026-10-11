@@ -11,6 +11,7 @@ import { clipOfTheDay, DailyDigest } from './highlights'
 import { healthCheck } from './health'
 import { isInside, serveFile } from './fileServer'
 import type { LibraryQuery } from './library'
+import { MiniWidget } from './miniWidget'
 import { OverlayToast } from './overlay'
 import { Recorder } from './recorder'
 import { SettingsStore } from './settings'
@@ -32,6 +33,8 @@ let recorder: Recorder
 let scheduler: UploadScheduler
 let tray: AppTray | null = null
 let overlay: OverlayToast | null = null
+let mini: MiniWidget | null = null
+let miniHideTimer: NodeJS.Timeout | null = null
 let registeredHotkey = ''
 const registeredKeys = new Set<string>()
 let hotkeySignature = ''
@@ -81,7 +84,39 @@ function createWindow() {
       }
     }
   })
-  win.on('closed', () => { win = null })
+  win.on('closed', () => { win = null; updateMini() })
+  for (const ev of ['show', 'hide', 'minimize', 'restore'] as const) win.on(ev as 'show', () => updateMini())
+}
+
+const mainVisible = () => !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()
+
+/**
+ * The corner controller is up whenever a session (recording or paused) is going and the main
+ * window is out of the way. Hiding waits a moment so quick internal restarts don't make it blink.
+ */
+function updateMini() {
+  if (!mini || !settings || !recorder) return
+  const st = recorder.status
+  const active = st.running || !!st.paused || !!st.starting
+  const want = settings.get().app.miniWidget && active && !mainVisible()
+  if (want) {
+    if (miniHideTimer) { clearTimeout(miniHideTimer); miniHideTimer = null }
+    mini.show()
+  } else if (mainVisible() || !settings.get().app.miniWidget) {
+    if (miniHideTimer) { clearTimeout(miniHideTimer); miniHideTimer = null }
+    mini.hide()
+  } else if (!miniHideTimer) {
+    miniHideTimer = setTimeout(() => { miniHideTimer = null; if (!(recorder.status.running || recorder.status.paused || recorder.status.starting)) mini?.hide() }, 1500)
+  }
+}
+
+/** "If we start recording, Clutch shrinks": tuck the window away and let the controller take over. */
+function shrinkToWidget() {
+  const a = settings.get().app
+  if (!a.miniWidget || !a.onboarded || !win || !mainVisible()) return
+  if (a.minimizeToTray && tray) win.hide()
+  else win.minimize()
+  updateMini()
 }
 
 function showWindow(page?: string) {
@@ -187,6 +222,14 @@ app.whenReady().then(async () => {
     try { await shareToCloud(next.id) } catch (e) { recorder.log('error', `Cloud backup paused: ${e instanceof Error ? e.message : String(e)}`) } finally { backingUp = false }
   }, 90_000).unref()
   overlay = new OverlayToast()
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL
+  mini = new MiniWidget({
+    url: rendererUrl ? `${rendererUrl}#mini` : 'cf://app/index.html#mini',
+    preload: path.join(__dirname, '../preload/index.js'),
+    getAnchor: () => settings.get().app.miniWidgetAnchor ?? undefined,
+    saveAnchor: (a) => settings.set({ app: { ...settings.get().app, miniWidgetAnchor: a } })
+  })
+  overlay.avoid = () => mini?.bounds ?? null
 
   // cf://file/<absolute path> -> local file (thumbnails, clip playback)
   // cf://app/<relative>       -> built renderer files
@@ -214,19 +257,28 @@ app.whenReady().then(async () => {
       .catch(() => cb({}))
   })
 
-  recorder.on('status', (st) => { send('status', st); tray?.refresh({ running: st.running, game: st.game }) })
+  recorder.on('status', (st) => {
+    send('status', st)
+    mini?.send('status', st)
+    tray?.refresh({ running: st.running, game: st.game })
+    updateMini()
+  })
+  recorder.on('autoStarted', () => shrinkToWidget())
   recorder.on('activity', (ev) => send('activity', ev))
   let lastLevels = 0
   recorder.on('levels', (l) => {
-    // Only while the window is visible; nobody sees meters in the tray.
-    if (!win || !win.isVisible() || win.isMinimized()) return
+    // Only to windows that show meters right now; nobody sees them in the tray.
+    const toMini = !!mini?.visible && mini.isExpanded
+    if (!mainVisible() && !toMini) return
     const now = Date.now()
     if (now - lastLevels < 90) return
     lastLevels = now
-    send('levels', l)
+    if (mainVisible()) send('levels', l)
+    if (toMini) mini!.send('levels', l)
   })
   recorder.on('clip', (clip) => {
     send('clip-saved', clip)
+    mini?.send('clip-saved', clip)
     if (settings.get().app.overlayToasts) overlay?.show('Clipped!', `${clip.game} · ${Math.round(clip.durationSec)}s`, 'clip')
   })
   recorder.on('game', (g) => send('game', g))
@@ -241,6 +293,8 @@ app.whenReady().then(async () => {
     if (app.isPackaged && app.getLoginItemSettings({ args: ['--hidden'] }).openAtLogin !== s.app.launchAtLogin) applyLaunchAtLogin(s.app.launchAtLogin)
     // Keep the window in sync with changes made by the main process (YouTube connect, tray, etc.).
     send('settings-changed', s)
+    mini?.send('settings-changed', s)
+    updateMini()
     if (win && canAcrylic) {
       const want = s.app.windowGlass ? 'acrylic' : 'none'
       if (want !== currentMaterial) {
@@ -338,11 +392,36 @@ app.whenReady().then(async () => {
   ipcMain.handle('window:minimize', () => win?.minimize())
   ipcMain.handle('window:hide', () => win?.hide())
 
-  ipcMain.handle('buffer:start', () => recorder.start('manual'))
+  ipcMain.handle('buffer:start', async () => { if (await recorder.start('manual')) shrinkToWidget() })
   ipcMain.handle('buffer:stop', () => recorder.stop('manual'))
+  ipcMain.handle('buffer:togglePause', () => recorder.togglePause())
+  // Corner controller
+  ipcMain.handle('mini:expand', (_e, on?: boolean) => { mini?.setExpanded(on ?? !mini.isExpanded); return mini?.isExpanded ?? false })
+  ipcMain.handle('mini:openMain', () => showWindow('dashboard'))
+  ipcMain.on('mini:drag', (_e, phase: 'start' | 'move' | 'end') => {
+    if (phase === 'start') mini?.dragStart()
+    else if (phase === 'move') mini?.dragMove()
+    else mini?.dragEnd()
+  })
+  const previewFile = path.join(dataDir, 'mini-preview.jpg')
+  let previewBusy = false
+  ipcMain.handle('mini:preview', async () => {
+    if (previewBusy) return null
+    previewBusy = true
+    try {
+      const r = await recorder.buffer.previewFrame(previewFile)
+      if (!r.ok) return null
+      const { readFile } = await import('node:fs/promises')
+      return { dataUrl: `data:image/jpeg;base64,${(await readFile(previewFile)).toString('base64')}`, atMs: r.atMs }
+    } catch { return null } finally { previewBusy = false }
+  })
   ipcMain.handle('buffer:status', () => recorder.status)
   ipcMain.handle('clip:now', () => recorder.clipNow('manual'))
-  ipcMain.handle('long:toggle', () => recorder.toggleLong())
+  ipcMain.handle('long:toggle', async () => {
+    const wasActive = recorder.status.running || !!recorder.status.paused
+    await recorder.toggleLong()
+    if (!wasActive && recorder.status.running) shrinkToWidget()
+  })
   ipcMain.handle('bookmark:add', () => recorder.bookmark())
   ipcMain.handle('system:canLaunchAtLogin', () => app.isPackaged && process.platform === 'win32')
   ipcMain.handle('activity:list', () => recorder.activity)
@@ -420,7 +499,9 @@ app.whenReady().then(async () => {
     hotkeys: () => ({ clip: settings.get().capture.clipHotkey, long: settings.get().capture.longRecordHotkey, bookmark: settings.get().capture.bookmarkHotkey }),
     launchAtLogin: () => ({ enabled: settings.get().app.launchAtLogin, available: app.isPackaged && process.platform === 'win32' }),
     setLaunchAtLogin: (on) => { settings.set({ app: { ...settings.get().app, launchAtLogin: on } }) },
-    startStop: () => void (recorder.status.running ? recorder.stop('manual') : recorder.start('manual')),
+    startStop: () => void (recorder.status.running || recorder.isPaused ? recorder.stop('manual') : recorder.start('manual').then((ok) => { if (ok) shrinkToWidget() })),
+    isPaused: () => recorder.isPaused,
+    togglePause: () => void recorder.togglePause(),
     clipNow: () => void recorder.clipNow('manual'),
     lengths: () => ({ options: recorder.lengthOptions(), current: recorder.effectiveCapture().preSeconds }),
     setLength: (n: number) => { recorder.setClipLength(n); announceLength({ seconds: n, edge: null }) },
@@ -445,6 +526,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', async () => {
   globalShortcut.unregisterAll()
   overlay?.destroy()
+  mini?.destroy()
   digest?.stop()
   disposeForegroundWatcher()
   recorder?.dispose()

@@ -29,6 +29,7 @@ const SETTINGS: { label: string; page: Page; find: string; keywords?: string }[]
   { label: 'Audio sources', page: 'settings', find: 'Audio sources', keywords: 'microphone mic input volume track separate discord desktop audio sound' },
   { label: 'Appearance', page: 'settings', find: 'Appearance', keywords: 'theme glass lite effects transparent acrylic look' },
   { label: 'On-screen “Clipped!” popup', page: 'settings', find: 'On-screen “Clipped!” popup', keywords: 'overlay toast notification in game' },
+  { label: 'Mini controller while recording', page: 'settings', find: 'Shrink to a mini controller while recording', keywords: 'widget overlay corner pause resume stop small floating hud' },
   { label: 'Start with Windows', page: 'settings', find: 'Start with Windows', keywords: 'startup login boot tray' },
   { label: 'Discord', page: 'settings', find: 'Discord', keywords: 'webhook channel post share server' },
   { label: 'Clip of the day', page: 'settings', find: 'Post my clip of the day', keywords: 'daily best digest discord' },
@@ -118,6 +119,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       status.running
         ? { id: 'a-stop', group: 'Actions', label: 'Stop recording', keywords: 'buffer off', icon: <Zap size={16} />, run: () => stop() }
         : { id: 'a-start', group: 'Actions', label: 'Start recording', keywords: 'buffer on record', icon: <Zap size={16} />, run: () => start() },
+      ...(status.running || status.paused ? [{ id: 'a-pause', group: 'Actions', label: status.paused ? 'Resume recording' : 'Pause recording', keywords: 'pause resume hold break', icon: <Zap size={16} />, run: () => { void window.cf.buffer.togglePause() } } as Item] : []),
       { id: 'a-clip', group: 'Actions', label: 'Clip now', sub: s.capture.clipHotkey, keywords: 'save clip capture moment', icon: <Zap size={16} />, run: () => clipNow() },
       { id: 'a-long', group: 'Actions', label: status.longRecording ? 'Stop long recording' : 'Start long recording', sub: s.capture.longRecordHotkey, keywords: 'session record full', icon: <Zap size={16} />, run: () => { void window.cf.buffer.toggleLong() } },
       { id: 'a-area', group: 'Actions', label: 'Select recording area on screen', keywords: 'region crop drag part of screen', icon: <Zap size={16} />, run: async () => { const r = await window.cf.capture.pickRegion(s.capture.monitorIndex); if (r) void save({ capture: { ...s.capture, area: { kind: 'region', ...r, label: 'Custom area' } } }) } },
@@ -136,7 +138,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       run: () => { setLibraryPreset({ game: g.name }); setPage('library') }
     }))
     return [...actions, ...pages, ...setts, ...gameItems]
-  }, [settings, status.running, status.longRecording, games]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [settings, status.running, status.paused, status.longRecording, games]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const query = q.trim().toLowerCase()
   const ranked = items

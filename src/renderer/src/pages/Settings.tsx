@@ -149,6 +149,7 @@ export default function Settings() {
             <button className="btn-sm ml-auto shrink-0" onClick={() => void window.cf.system.testOverlay()}>Test</button>
           </div>
           <Toggle checked={a.clipSound} onChange={(clipSound) => void setApp({ clipSound })} label="Play a chime when a clip is saved" />
+          <Toggle checked={a.miniWidget} onChange={(miniWidget) => void setApp({ miniWidget })} label="Shrink to a mini controller while recording" hint="Clutch tucks away and a small panel with pause and stop sits in the corner. Only you see it; it never shows up in clips. Double-click it to check the recording." />
           <Toggle checked={a.minimizeToTray} onChange={(minimizeToTray) => void setApp({ minimizeToTray })} label="Keep running in the tray when closed" hint="Recording and hotkeys keep working. Quit from the tray icon." />
           <Toggle checked={a.startMinimized} onChange={(startMinimized) => void setApp({ startMinimized })} label="Start minimized to the tray" />
           <StartWithWindows />

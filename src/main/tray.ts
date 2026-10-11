@@ -9,6 +9,8 @@ export interface TrayActions {
   clipNow: () => void
   quit: () => void
   isRunning: () => boolean
+  isPaused: () => boolean
+  togglePause: () => void
   lengths: () => { options: number[]; current: number }
   setLength: (seconds: number) => void
   toggleLong: () => void
@@ -47,6 +49,7 @@ export class AppTray {
     const running = status?.running ?? this.last?.running ?? this.actions.isRunning()
     const game = status?.game ?? this.last?.game
     const long = this.actions.isLong()
+    const paused = this.actions.isPaused()
     const { options, current } = this.actions.lengths()
     const keys = this.actions.hotkeys()
     const login = this.actions.launchAtLogin()
@@ -56,14 +59,15 @@ export class AppTray {
       this.tray.setImage(running ? this.rec : this.idle)
       this.shownRec = running
     }
-    const state = long ? `Long recording${game ? ` · ${game}` : ''}` : running ? `Recording${game ? ` · ${game}` : ''}` : 'Waiting for a game'
+    const state = paused ? `Paused${long ? ' · long recording' : ''}` : long ? `Long recording${game ? ` · ${game}` : ''}` : running ? `Recording${game ? ` · ${game}` : ''}` : 'Waiting for a game'
     this.tray.setToolTip(`Clutch - ${state}`)
     this.tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: state, enabled: false },
         { type: 'separator' },
-        { label: running ? 'Stop recording' : 'Start recording', click: () => this.actions.startStop() },
-        { label: 'Clip now', enabled: running, accelerator: accel(keys.clip), registerAccelerator: false, click: () => this.actions.clipNow() },
+        { label: running || paused ? 'Stop recording' : 'Start recording', click: () => this.actions.startStop() },
+        { label: paused ? 'Resume recording' : 'Pause recording', enabled: running || paused, click: () => this.actions.togglePause() },
+        { label: 'Clip now', enabled: running || paused, accelerator: accel(keys.clip), registerAccelerator: false, click: () => this.actions.clipNow() },
         { label: long ? 'Stop long recording' : 'Start long recording', accelerator: accel(keys.long), registerAccelerator: false, click: () => this.actions.toggleLong() },
         { label: 'Bookmark this moment', enabled: long, accelerator: accel(keys.bookmark), registerAccelerator: false, click: () => this.actions.bookmark() },
         {

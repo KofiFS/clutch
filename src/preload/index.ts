@@ -19,7 +19,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded'
 
 const api = {
   settings: {
@@ -72,7 +72,15 @@ const api = {
     status: (): Promise<BufferStatus> => ipcRenderer.invoke('buffer:status'),
     clipNow: (): Promise<Clip | undefined> => ipcRenderer.invoke('clip:now'),
     toggleLong: (): Promise<unknown> => ipcRenderer.invoke('long:toggle'),
-    bookmark: (): Promise<void> => ipcRenderer.invoke('bookmark:add')
+    bookmark: (): Promise<void> => ipcRenderer.invoke('bookmark:add'),
+    togglePause: (): Promise<unknown> => ipcRenderer.invoke('buffer:togglePause')
+  },
+  /** The corner recording controller. */
+  mini: {
+    expand: (on?: boolean): Promise<boolean> => ipcRenderer.invoke('mini:expand', on),
+    openMain: (): Promise<void> => ipcRenderer.invoke('mini:openMain'),
+    drag: (phase: 'start' | 'move' | 'end') => ipcRenderer.send('mini:drag', phase),
+    preview: (): Promise<{ dataUrl: string; atMs: number } | null> => ipcRenderer.invoke('mini:preview')
   },
   activity: { list: (): Promise<ActivityEvent[]> => ipcRenderer.invoke('activity:list') },
   audio: { push: (pcm: ArrayBuffer, levelDb: number) => ipcRenderer.send('audio:push', pcm, levelDb) },

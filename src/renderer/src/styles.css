@@ -60,6 +60,7 @@
 html, body, #root { height: 100%; }
 html { background: var(--color-bg); }
 html[data-window-glass='on'], html[data-window-glass='on'] body { background: transparent; }
+html[data-mini='on'], html[data-mini='on'] body { background: transparent; }
 body {
   color: var(--color-ink);
   font-family: var(--font-sans);
@@ -281,3 +282,46 @@ html[data-window-glass='on'] .cf-aurora { opacity: 0.35 !important; }
   0%, 30% { box-shadow: 0 0 0 2px rgba(79, 227, 255, 0.9), 0 0 32px -4px rgba(79, 227, 255, 0.8); }
   100% { box-shadow: 0 0 0 2px rgba(79, 227, 255, 0), 0 0 32px -4px rgba(79, 227, 255, 0); }
 }
+
+/* ---------------- Corner recording controller (own transparent window) ---------------- */
+/* No backdrop-filter: a transparent window can't blur what's behind it, so the panel is near-opaque glass. */
+.mini-panel {
+  position: relative;
+  border-radius: 20px;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.015) 55%),
+    rgba(8, 12, 22, 0.94);
+  border: 1px solid rgba(170, 225, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 10px 26px -8px rgba(0, 0, 0, 0.85);
+  cursor: grab;
+}
+.mini-panel:active { cursor: grabbing; }
+.mini-dot { width: 10px; height: 10px; border-radius: 999px; flex: none; }
+.mini-dot.rec { background: #ff3b5c; box-shadow: 0 0 0 3px rgba(255, 59, 92, 0.18), 0 0 12px #ff3b5c; }
+.mini-dot.paused { background: var(--color-warn); box-shadow: 0 0 0 3px rgba(255, 200, 87, 0.16); }
+.mini-dot.starting { background: var(--color-ink-3); }
+.mini-btn {
+  width: 36px; height: 36px; flex: none; border-radius: 12px;
+  display: grid; place-items: center; cursor: pointer;
+  color: var(--color-ink-2);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background-color 0.15s, color 0.15s, transform 0.12s var(--ease-out);
+}
+.mini-btn:hover { background: rgba(255, 255, 255, 0.12); color: var(--color-ink); }
+.mini-btn:active { transform: scale(0.94); }
+.mini-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.mini-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+.mini-btn.accent { color: #00121a; background: linear-gradient(180deg, #8ff1ff, #4fe3ff 45%, #2bb8ff); border-color: transparent; }
+.mini-btn.accent:hover { filter: brightness(1.08); }
+.mini-btn.warn { color: #1a1200; background: var(--color-warn); border-color: transparent; }
+.mini-btn.bad:hover { background: rgba(255, 107, 139, 0.2); color: #ffb3c2; }
+.mini-wide {
+  flex: 1; height: 34px; border-radius: 11px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  font-size: 12px; font-weight: 500; color: var(--color-ink-2);
+  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: background-color 0.15s, color 0.15s;
+}
+.mini-wide:hover { background: rgba(255, 255, 255, 0.12); color: var(--color-ink); }
+.mini-wide:disabled { opacity: 0.4; cursor: default; }

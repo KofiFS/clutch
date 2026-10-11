@@ -227,6 +227,10 @@ export interface AppBehavior {
   trayHintShown: boolean
   /** Show sponsored cards on Home and Clips (never in game). Supports development; free to turn off. */
   showAds: boolean
+  /** When recording starts, shrink Clutch to a small controller in the corner (hidden from clips). */
+  miniWidget: boolean
+  /** Where the user dragged the controller to (its top-right corner, screen DIP). */
+  miniWidgetAnchor?: { right: number; top: number } | null
 }
 
 export interface Settings {
@@ -342,6 +346,8 @@ export interface BufferStatus {
   talking?: boolean
   /** Set while a long (full-session) recording is running. */
   longRecording?: { since: string; bookmarks: number; game: string }
+  /** Set while recording is paused (nothing captured, buffer kept). `since` then counts recorded time only. */
+  paused?: { since: string }
 }
 
 export interface ActivityEvent {
@@ -429,7 +435,9 @@ export const DEFAULT_SETTINGS: Settings = {
     windowGlass: false,
     launchAtLogin: false,
     trayHintShown: false,
-    showAds: true
+    showAds: true,
+    miniWidget: true,
+    miniWidgetAnchor: null
   },
   cloud: { serverUrl: OFFICIAL_CLOUD_URL, backupFavorites: true },
   blocklist: [],
