@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { ActivityEvent, BufferStatus, Clip, GameInfo, Settings } from '../../../shared/types'
+import type { AccountState, ActivityEvent, BufferStatus, Clip, GameInfo, Settings } from '../../../shared/types'
 import { loopbackActive, startLoopback, stopLoopback } from './loopback'
 import { useToast } from '../components/Toasts'
 
@@ -19,6 +19,13 @@ interface Store {
   viewerClipId: string | null
   /** One-shot filter for the Clips page (set by search / tray), cleared once applied. */
   libraryPreset: LibraryPreset | null
+  account: AccountState
+  /** Open the sign-in dialog; `reason` explains which feature needs an account. */
+  signIn: (reason?: string) => void
+  signInReason: string | null
+  closeSignIn: () => void
+  proOpen: boolean
+  setProOpen: (v: boolean) => void
   setLibraryPreset: (p: LibraryPreset | null) => void
   openClip: (id: string | null) => void
   save: (patch: Partial<Settings>) => Promise<void>
@@ -40,6 +47,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [page, setPage] = useState<Page>('dashboard')
   const [viewerClipId, openClip] = useState<string | null>(null)
   const [libraryPreset, setLibraryPreset] = useState<LibraryPreset | null>(null)
+  const [account, setAccount] = useState<AccountState>({ signedIn: false, serverUrl: '' })
+  const [signInReason, setSignInReason] = useState<string | null>(null)
+  const [proOpen, setProOpen] = useState(false)
+  const signIn = useCallback((reason?: string) => setSignInReason(reason ?? 'Sign in to use cloud features.'), [])
+  const closeSignIn = useCallback(() => setSignInReason(null), [])
   const [loopbackError, setLoopbackError] = useState<string | null>(null)
   const toast = useToast()
   const settingsRef = useRef<Settings | null>(null)
@@ -49,6 +61,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void window.cf.settings.get().then(setSettings)
     void window.cf.buffer.status().then((s) => { setStatus(s); if (s.gameInfo) setGame(s.gameInfo) })
     void window.cf.activity.list().then(setActivity)
+    void window.cf.account.get().then(setAccount)
     const offs = [
       window.cf.on('status', (s: BufferStatus) => { setStatus(s); if (s.gameInfo) setGame(s.gameInfo) }),
       window.cf.on('activity', (ev: ActivityEvent) => {
@@ -63,6 +76,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (settingsRef.current?.app.clipSound) playClipSound()
       }),
       window.cf.on('settings-changed', (s: Settings) => setSettings(s)),
+      window.cf.on('account', (a: AccountState) => setAccount(a)),
+      window.cf.on('open-pro', () => setProOpen(true)),
       window.cf.on('open-clip', (id: string) => openClip(id)),
       window.cf.on('navigate', (p: Page) => { openClip(null); setPage(p) }),
       window.cf.on('clip-of-the-day', (clip: Clip) => {
@@ -99,8 +114,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const clipNow = useCallback(async () => { await window.cf.buffer.clipNow() }, [])
 
   const value = useMemo<Store>(
-    () => ({ settings, status, activity, game, libraryVersion, uploadsVersion, page, setPage, viewerClipId, openClip, libraryPreset, setLibraryPreset, save, start, stop, clipNow, loopbackError }),
-    [settings, status, activity, game, libraryVersion, uploadsVersion, page, viewerClipId, libraryPreset, save, start, stop, clipNow, loopbackError]
+    () => ({ settings, status, activity, game, libraryVersion, uploadsVersion, page, setPage, viewerClipId, openClip, libraryPreset, setLibraryPreset, account, signIn, signInReason, closeSignIn, proOpen, setProOpen, save, start, stop, clipNow, loopbackError }),
+    [settings, status, activity, game, libraryVersion, uploadsVersion, page, viewerClipId, libraryPreset, account, signIn, signInReason, closeSignIn, proOpen, save, start, stop, clipNow, loopbackError]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

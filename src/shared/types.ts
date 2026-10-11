@@ -139,6 +139,67 @@ export interface DiscordSettings {
   mention: string
 }
 
+/**
+ * The official Clutch cloud server. Leave empty until you deploy server/ somewhere;
+ * people can also point the app at their own server under Settings → Account.
+ */
+export const OFFICIAL_CLOUD_URL = ''
+
+export interface CloudSettings {
+  /** Clutch cloud server URL (sign-in, share links, cloud storage, Pro). */
+  serverUrl: string
+  /** Pro: upload favorited clips to the cloud automatically. */
+  backupFavorites: boolean
+}
+
+export interface PlanFeatures {
+  shareLinks: boolean
+  cloudBackup: boolean
+  autoUploadSlots: number
+  autoUploadPlatforms: number
+  adFree: boolean
+}
+
+export interface AccountState {
+  signedIn: boolean
+  serverUrl: string
+  user?: { id: string; name: string; avatar?: string | null; provider: string; email?: string | null }
+  plan?: { id: 'free' | 'pro'; name: string; until: number | null; storageBytes: number; maxClipBytes: number; linkDays: number; features: PlanFeatures }
+  usage?: { bytes: number }
+  billing?: { enabled: boolean; hasSubscription: boolean }
+  error?: string
+}
+
+export interface AdCard {
+  id: string
+  title: string
+  body: string
+  cta: string
+  /** https link, or clutch://pro for the in-app Pro page. */
+  url: string
+  image?: string
+  sponsor?: string
+  placements?: string[]
+}
+
+/** Shown when no cloud server is reachable, so the slot never breaks. */
+export const HOUSE_ADS: (AdCard & { placements: string[] })[] = [
+  { id: 'pro-upgrade', placements: ['home', 'library'], title: 'Clutch Pro', body: '100 GB of cloud clips, share links that never expire, and no sponsored cards.', cta: 'See Pro', url: 'clutch://pro', sponsor: 'Clutch' },
+  { id: 'star-github', placements: ['home', 'library'], title: 'Clutch is open source', body: 'Star the project on GitHub, report bugs, or build a feature yourself.', cta: 'Open GitHub', url: 'https://github.com/', sponsor: 'Clutch' }
+]
+
+/** Plan comparison shown in the app (the server enforces the cloud limits). */
+export const PLAN_ROWS: { label: string; free: string; pro: string }[] = [
+  { label: 'Recording, hotkeys, triggers, editor', free: 'Unlimited', pro: 'Unlimited' },
+  { label: 'Discord + manual YouTube uploads', free: 'Yes', pro: 'Yes' },
+  { label: 'Cloud storage', free: '2 GB', pro: '100 GB' },
+  { label: 'Share links', free: 'Kept 30 days', pro: 'Never expire' },
+  { label: 'Biggest clip to share', free: '100 MB', pro: '1 GB' },
+  { label: 'Auto-upload schedule', free: '1 time a day', pro: 'Up to 12 a day' },
+  { label: 'Back up favorites to the cloud', free: '—', pro: 'Automatic' },
+  { label: 'Sponsored cards', free: 'Optional (can turn off)', pro: 'Never' }
+]
+
 export interface AppBehavior {
   /** First-run wizard completed. */
   onboarded: boolean
@@ -164,6 +225,8 @@ export interface AppBehavior {
   launchAtLogin: boolean
   /** The "still running in the tray" notice was shown once. */
   trayHintShown: boolean
+  /** Show sponsored cards on Home and Clips (never in game). Supports development; free to turn off. */
+  showAds: boolean
 }
 
 export interface Settings {
@@ -171,6 +234,7 @@ export interface Settings {
   vision: VisionRules
   voice: VoiceRules
   upload: UploadSettings
+  cloud: CloudSettings
   discord: DiscordSettings
   hype: HypeRules
   ai: AISettings
@@ -218,6 +282,8 @@ export interface Clip {
   views?: number
   /** Bookmarked moments in a long recording, seconds from the start. */
   bookmarks?: number[]
+  /** Set once the clip is in the Clutch cloud. */
+  cloud?: { id: string; shareUrl: string; uploadedAt: string; expires: number | null }
 }
 
 export interface UploadRecord {
@@ -362,8 +428,10 @@ export const DEFAULT_SETTINGS: Settings = {
     effects: 'full',
     windowGlass: false,
     launchAtLogin: false,
-    trayHintShown: false
+    trayHintShown: false,
+    showAds: true
   },
+  cloud: { serverUrl: OFFICIAL_CLOUD_URL, backupFavorites: true },
   blocklist: [],
   allowlist: [],
   profiles: {},

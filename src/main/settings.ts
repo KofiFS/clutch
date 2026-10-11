@@ -13,6 +13,8 @@ export class SettingsStore {
     this.file = path.join(app.getPath('userData'), 'settings.json')
     this.data = this.load()
     this.data = syncAudio(this.data, this.data)
+    // Renamed from ClipForge: update the untouched default upload description.
+    if (this.data.upload.youtube.descriptionTemplate === 'Recorded with ClipForge') this.data.upload.youtube.descriptionTemplate = 'Recorded with Clutch'
     if (!this.data.capture.outputDir) {
       this.data.capture.outputDir = path.join(app.getPath('videos'), 'Clutch')
     }

@@ -23,6 +23,9 @@ export class UploadScheduler extends EventEmitter<{ log: [string]; change: []; d
   private firedSlots = new Set<string>()
   private uploading = false
 
+  /** Auto-uploads need a Clutch account; the plan decides how many times a day. */
+  gate: () => { ok: boolean; slots: number } = () => ({ ok: true, slots: 99 })
+
   constructor(private library: Library, private getSettings: () => Settings, private dataDir: string) {
     super()
   }
@@ -145,10 +148,13 @@ export class UploadScheduler extends EventEmitter<{ log: [string]; change: []; d
   private fireSchedule() {
     const sch = this.getSettings().upload.schedule
     if (!sch.enabled) return
+    const g = this.gate()
+    if (!g.ok) return
+    const times = [...sch.times].sort().slice(0, g.slots)
     const now = new Date()
     const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
     const slotKey = `${now.toDateString()} ${hhmm}`
-    if (!sch.times.includes(hhmm) || this.firedSlots.has(slotKey)) return
+    if (!times.includes(hhmm) || this.firedSlots.has(slotKey)) return
     this.firedSlots.add(slotKey)
     for (const platform of sch.platforms) {
       const next = this.nextScheduled(platform)

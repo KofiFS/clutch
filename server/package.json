@@ -1,0 +1,13 @@
+{
+  "name": "clutch-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clutch cloud: sign-in (Discord, Google/YouTube, Twitch), cloud clip storage, share links, Pro subscriptions, sponsored cards.",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --no-warnings src/index.mjs",
+    "dev": "node --no-warnings --watch src/index.mjs"
+  }
+}

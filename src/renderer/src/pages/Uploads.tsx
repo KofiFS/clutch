@@ -5,7 +5,7 @@ import { dayLabel, fileUrl, timeAgo, useStore } from '../lib/store'
 import { Empty, Field, Progress, Section, Toggle, Badge } from '../components/ui'
 
 export default function Uploads() {
-  const { settings, save, uploadsVersion, libraryVersion, setPage, openClip } = useStore()
+  const { settings, save, uploadsVersion, libraryVersion, setPage, openClip, account, signIn, setProOpen } = useStore()
   const [items, setItems] = useState<{ clip: Clip; upload: UploadRecord }[]>([])
   const [upNext, setUpNext] = useState<Clip | undefined>()
   const [newTime, setNewTime] = useState('18:00')
@@ -43,8 +43,20 @@ export default function Uploads() {
         title="Auto-upload schedule"
         icon={<CalendarClock size={16} />}
         desc="At each time below, the oldest favorite (or tagged) clip that hasn't gone out yet is uploaded. Heart the clips you like and your channel stays fed."
-        right={<Toggle checked={sch.enabled} onChange={(enabled) => void setSch({ enabled })} label={sch.enabled ? 'On' : 'Off'} />}
+        right={<Toggle checked={sch.enabled && account.signedIn} onChange={(enabled) => { if (!account.signedIn) { signIn('Auto-uploads run on a schedule from your Clutch account. Sign in to turn them on.'); return } void setSch({ enabled }) }} label={sch.enabled && account.signedIn ? 'On' : 'Off'} />}
       >
+        {!account.signedIn && (
+          <div className="card-2 p-3.5 flex items-center gap-3 text-sm">
+            <span className="flex-1">Auto-uploads need a free Clutch account. Manual uploads from a clip’s Share tab work without one.</span>
+            <button className="btn-primary h-9" onClick={() => signIn('Auto-uploads run on a schedule from your Clutch account. Sign in to turn them on.')}>Sign in</button>
+          </div>
+        )}
+        {account.signedIn && sch.times.length > (account.plan?.features.autoUploadSlots ?? 1) && (
+          <div className="card-2 p-3.5 flex items-center gap-3 text-sm">
+            <span className="flex-1">Your plan uploads {account.plan?.features.autoUploadSlots ?? 1} time{(account.plan?.features.autoUploadSlots ?? 1) > 1 ? 's' : ''} a day, so only the earliest {account.plan?.features.autoUploadSlots ?? 1} of these run. Pro allows up to 12.</span>
+            <button className="btn h-9" onClick={() => setProOpen(true)}>See Pro</button>
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-5">
           <Field label="Upload times (local)">
             <div className="flex flex-wrap gap-2 items-center">

@@ -126,7 +126,7 @@ export class Library extends EventEmitter<{ change: [] }> {
     return clip
   }
 
-  update(id: string, patch: Partial<Pick<Clip, 'title' | 'tags' | 'favorite' | 'game' | 'uploads'>>): Clip | undefined {
+  update(id: string, patch: Partial<Pick<Clip, 'title' | 'tags' | 'favorite' | 'game' | 'uploads' | 'cloud'>>): Clip | undefined {
     const c = this.get(id)
     if (!c) return
     Object.assign(c, patch)

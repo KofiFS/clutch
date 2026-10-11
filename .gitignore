@@ -3,3 +3,6 @@ out
 release
 .env
 *.log
+server/data
+server/.env
+resources/ffmpeg

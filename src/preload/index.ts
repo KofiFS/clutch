@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ActivityEvent, BufferStatus, Clip, GameInfo, GameSummary, HealthItem, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
+import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, GameInfo, GameSummary, HealthItem, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
 
 export interface LibraryQuery {
   text?: string
@@ -19,7 +19,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro'
 
 const api = {
   settings: {
@@ -37,6 +37,25 @@ const api = {
     testOverlay: () => ipcRenderer.invoke('system:testOverlay'),
     canAcrylic: (): Promise<boolean> => ipcRenderer.invoke('system:canAcrylic'),
     canLaunchAtLogin: (): Promise<boolean> => ipcRenderer.invoke('system:canLaunchAtLogin')
+  },
+  account: {
+    get: (): Promise<AccountState> => ipcRenderer.invoke('account:get'),
+    refresh: (): Promise<AccountState> => ipcRenderer.invoke('account:refresh'),
+    providers: (): Promise<{ id: string; label: string }[]> => ipcRenderer.invoke('account:providers'),
+    signIn: (provider: string): Promise<AccountState> => ipcRenderer.invoke('account:signIn', provider),
+    lastAuthUrl: (): Promise<string> => ipcRenderer.invoke('account:lastAuthUrl'),
+    signOut: (): Promise<void> => ipcRenderer.invoke('account:signOut'),
+    checkout: (): Promise<void> => ipcRenderer.invoke('account:checkout'),
+    portal: (): Promise<void> => ipcRenderer.invoke('account:portal'),
+    devPlan: (plan: 'free' | 'pro'): Promise<void> => ipcRenderer.invoke('account:devPlan', plan)
+  },
+  cloud: {
+    share: (clipId: string): Promise<{ id: string; shareUrl: string; expires: number | null }> => ipcRenderer.invoke('cloud:share', clipId),
+    unshare: (clipId: string): Promise<void> => ipcRenderer.invoke('cloud:unshare', clipId)
+  },
+  ads: {
+    get: (placement: string): Promise<AdCard[]> => ipcRenderer.invoke('ads:get', placement),
+    open: (ad: AdCard): Promise<void> => ipcRenderer.invoke('ads:open', { id: ad.id, url: ad.url })
   },
   capture: {
     monitors: (): Promise<MonitorInfo[]> => ipcRenderer.invoke('capture:monitors'),

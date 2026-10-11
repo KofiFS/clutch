@@ -5,6 +5,7 @@ import { dayLabel, fileUrl, fmtDuration, timeAgo, useStore } from '../lib/store'
 import type { GameSummary } from '../../../shared/types'
 import { Empty, GameIcon, Kbd, useConfirm } from '../components/ui'
 import { useToast } from '../components/Toasts'
+import { SponsoredCard } from '../components/Account'
 
 const TRIGGER_ICON: Record<TriggerSource, typeof Eye> = { hotkey: Keyboard, vision: Eye, voice: Mic, hype: Flame, manual: MousePointerClick, long: Video }
 const TRIGGER_LABEL: Record<TriggerSource, string> = { hotkey: 'Hotkey', vision: 'AI', voice: 'Voice', hype: 'Hype', manual: 'Manual', long: 'Long' }
@@ -149,6 +150,8 @@ export default function Library() {
           <option value="largest">Largest file</option>
         </select>
       </div>
+
+      <SponsoredCard placement="library" />
 
       {clips.length === 0 && (
         view === 'trash'

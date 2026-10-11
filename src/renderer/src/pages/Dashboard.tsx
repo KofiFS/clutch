@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, Clapperboard, Eye, Gamepad2, Mic, UploadCloud, Zap, Film, ChevronRight, Activity, Flame, MessageSquare, Trophy, Send, Loader2 } from 'lucide-react'
+import { Monitor, AlertCircle, Clapperboard, Eye, Gamepad2, Mic, UploadCloud, Zap, Film, ChevronRight, Activity, Flame, MessageSquare, Trophy, Send, Loader2 } from 'lucide-react'
 import type { Clip, HealthItem } from '../../../shared/types'
 import { fileUrl, fmtBytes, fmtDuration, timeAgo, useStore } from '../lib/store'
 import { GameIcon, Section, Badge, Kbd, RingGauge, IconOrb } from '../components/ui'
 import { LiveMeter } from '../components/AudioSources'
 import { useToast } from '../components/Toasts'
+import { SponsoredCard } from '../components/Account'
 
 export default function Dashboard() {
   const { status, activity, settings, libraryVersion, start, clipNow, setPage, openClip, game, loopbackError } = useStore()
@@ -50,7 +51,7 @@ export default function Dashboard() {
               {status.running ? <Badge tone="live"><span className="w-1.5 h-1.5 rounded-full bg-live pulse-dot" /> Recording</Badge> : <Badge>Standby</Badge>}
               {game && (
                 <span className="flex items-center gap-1.5 text-sm text-ink-2 min-w-0">
-                  <GameIcon src={game.icon ? fileUrl(game.icon) : undefined} name={game.name} size={18} />
+                  {game.isGame ? <GameIcon src={game.icon ? fileUrl(game.icon) : undefined} name={game.name} size={18} /> : <Monitor size={16} className="text-ink-3" />}
                   <span className="truncate">{game.name}</span>
                 </span>
               )}
@@ -110,6 +111,8 @@ export default function Dashboard() {
           </button>
         ))}
       </div>
+
+      <SponsoredCard placement="home" />
 
       {best && (
         <section className="card hud overflow-hidden flex fade-in">

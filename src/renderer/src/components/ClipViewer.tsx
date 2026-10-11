@@ -157,7 +157,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
 
   return (
     <div className="fixed inset-0 z-[100] bg-[rgba(2,8,20,0.5)] backdrop-blur-xl flex items-center justify-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" className="card hud w-full max-w-[1320px] h-full max-h-[880px] flex overflow-hidden shadow-[var(--shadow-pop)] pop-in">
+      <div role="dialog" aria-modal="true" className="card hud w-full max-w-[1320px] h-full max-h-[880px] flex overflow-hidden shadow-[var(--shadow-pop)] pop-in" style={{ background: 'linear-gradient(160deg, rgba(14,22,40,0.92), rgba(6,10,20,0.94))' }}>
         {/* Player column */}
         <div className="relative z-[2] flex-1 min-w-0 flex flex-col">
           <div className="flex items-center gap-2 px-5 h-14 border-b border-white/10">

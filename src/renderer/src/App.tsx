@@ -7,6 +7,7 @@ import type { ReactNode } from 'react'
 import { ClipViewer } from './components/ClipViewer'
 import { Backdrop } from './components/Backdrop'
 import { CommandPalette } from './components/CommandPalette'
+import { ProDialog, SignInDialog } from './components/Account'
 import Dashboard from './pages/Dashboard'
 import Library from './pages/Library'
 import Rules from './pages/Rules'
@@ -189,6 +190,8 @@ function Shell() {
       </div>
       {viewerClipId && <ClipViewer clipId={viewerClipId} onClose={() => openClip(null)} />}
       <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <SignInDialog />
+      <ProDialog />
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { useStore } from '../lib/store'
 import { HotkeyInput } from '../components/HotkeyInput'
 import { CaptureAreaSettings, StorageSettings } from '../components/CaptureAreaSettings'
 import { AudioSources } from '../components/AudioSources'
+import { AccountSection } from '../components/Account'
 import { useToast } from '../components/Toasts'
 import { Badge, Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 
@@ -62,6 +63,8 @@ export default function Settings() {
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-ink-3 text-sm mt-1">{status.running ? 'Capture changes apply the next time recording starts.' : 'Quality, audio, notifications and accounts.'}</p>
       </header>
+
+      <AccountSection />
 
       <Health onFix={setPage} />
 

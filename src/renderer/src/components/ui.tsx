@@ -252,7 +252,7 @@ export function Modal({ open, onClose, children, width = 'max-w-2xl', title, hid
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[100] bg-[rgba(2,6,16,0.55)] backdrop-blur-md grid place-items-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" className={`card w-full ${width} max-h-[calc(100vh-48px)] overflow-hidden flex flex-col pop-in shadow-[var(--shadow-pop)]`}>
+      <div role="dialog" aria-modal="true" className={`card w-full ${width} max-h-[calc(100vh-48px)] overflow-hidden flex flex-col pop-in shadow-[var(--shadow-pop)]`} style={{ background: 'linear-gradient(160deg, rgba(14,22,40,0.94), rgba(6,10,20,0.96))' }}>
         {!hideHeader && (
           <div className="flex items-center justify-between px-5 h-14 border-b border-line shrink-0">
             <div className="font-semibold truncate">{title}</div>

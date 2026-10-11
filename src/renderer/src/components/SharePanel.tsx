@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, CheckCircle2, Clock, Copy, ExternalLink, Loader2, MessageSquare, Send, UploadCloud, XCircle, Youtube } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Clock, Cloud, Copy, ExternalLink, Link2, Loader2, MessageSquare, Send, Trash2, UploadCloud, XCircle, Youtube } from 'lucide-react'
 import type { Clip } from '../../../shared/types'
 import { useStore } from '../lib/store'
 import { useToast } from './Toasts'
@@ -50,7 +50,8 @@ export function SharePanel({ clip }: { clip: Clip }) {
 
   return (
     <div className="space-y-4">
-      <DiscordBlock clip={clip} />
+      <CloudShareBlock clip={clip} />
+      <div className="pt-4 border-t border-line"><DiscordBlock clip={clip} /></div>
       <div className="flex items-center gap-2 text-sm pt-4 border-t border-line">
         <span className="w-8 h-8 rounded-lg bg-[#ff0000]/15 text-[#ff4d4d] grid place-items-center"><Youtube size={16} /></span>
         <div className="min-w-0">
@@ -163,6 +164,55 @@ function DiscordBlock({ clip }: { clip: Clip }) {
           <button className="btn w-full bg-[#5865F2] border-[#5865F2] text-white hover:bg-[#4752c4] hover:border-[#4752c4]" disabled={busy} onClick={() => void post()}>
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {busy ? 'Preparing & posting…' : 'Post to Discord'}
           </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Clutch cloud share link: anyone can watch in a browser, and it plays inline in Discord. */
+function CloudShareBlock({ clip }: { clip: Clip }) {
+  const { account, signIn } = useStore()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState(0)
+  useEffect(() => {
+    const off = window.cf.on('cloud-progress', (p: { clipId: string; progress: number }) => { if (p.clipId === clip.id) setProgress(p.progress) })
+    return () => { off() }
+  }, [clip.id])
+  const cloud = clip.cloud && (!clip.cloud.expires || clip.cloud.expires > Date.now()) ? clip.cloud : null
+  const copy = (url: string) => { void navigator.clipboard.writeText(url); toast.push({ kind: 'success', title: 'Link copied', body: url }) }
+  const create = async () => {
+    if (!account.signedIn) { signIn('Share links live in your Clutch cloud. Sign in (free) to create one.'); return }
+    setBusy(true); setProgress(0)
+    try { const r = await window.cf.cloud.share(clip.id); copy(r.shareUrl) }
+    catch (e) { toast.push({ kind: 'error', title: 'Could not create the link', body: String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': Error: /, '') }) }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="w-8 h-8 rounded-lg bg-accent/15 text-accent grid place-items-center"><Cloud size={16} /></span>
+        <div className="min-w-0">
+          <div className="font-semibold">Share link</div>
+          <div className="text-xs text-ink-3 truncate">{cloud ? (cloud.expires ? `Expires ${new Date(cloud.expires).toLocaleDateString()}` : 'Never expires') : account.signedIn ? 'Upload once, share anywhere' : 'Needs a free Clutch account'}</div>
+        </div>
+      </div>
+      {cloud ? (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input className="input font-mono text-[12px]" readOnly value={cloud.shareUrl} onFocus={(e) => e.target.select()} aria-label="Share link" />
+            <button className="btn-icon" onClick={() => copy(cloud.shareUrl)} aria-label="Copy link"><Copy size={15} /></button>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-sm" onClick={() => void window.cf.system.openExternal(cloud.shareUrl)}><ExternalLink size={12} /> Open</button>
+            <button className="btn-sm hover:text-bad" onClick={() => void window.cf.cloud.unshare(clip.id)}><Trash2 size={12} /> Delete from cloud</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <button className="btn-primary w-full" disabled={busy} onClick={() => void create()}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />} {busy ? (progress > 0 ? `Uploading ${Math.round(progress * 100)}%` : 'Preparing…') : account.signedIn ? 'Create share link' : 'Sign in to share'}</button>
+          {busy && progress > 0 && <Progress value={progress} />}
         </>
       )}
     </div>

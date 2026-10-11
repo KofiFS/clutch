@@ -1,0 +1,35 @@
+{
+  "_comment": "Sponsored cards shown in the app (Home and Clips pages only, never in game). Edit freely: sell slots directly to sponsors or rotate your own. 'weight' controls how often each shows. Images must be https and small.",
+  "ads": [
+    {
+      "id": "pro-upgrade",
+      "placements": ["home", "library"],
+      "weight": 3,
+      "title": "Clutch Pro",
+      "body": "100 GB of cloud clips, share links that never expire, and no sponsored cards.",
+      "cta": "See Pro",
+      "url": "clutch://pro",
+      "sponsor": "Clutch"
+    },
+    {
+      "id": "star-github",
+      "placements": ["home", "library"],
+      "weight": 2,
+      "title": "Clutch is open source",
+      "body": "Star the project on GitHub, report bugs, or build a feature yourself.",
+      "cta": "Open GitHub",
+      "url": "https://github.com/",
+      "sponsor": "Clutch"
+    },
+    {
+      "id": "community",
+      "placements": ["home"],
+      "weight": 1,
+      "title": "Join the Clutch community",
+      "body": "Share clips, find teammates and vote on what gets built next.",
+      "cta": "Join",
+      "url": "https://discord.com/",
+      "sponsor": "Clutch"
+    }
+  ]
+}

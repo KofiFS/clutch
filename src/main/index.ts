@@ -5,6 +5,7 @@ import type { Platform, Settings } from '../shared/types'
 import { detectEncoders, listAudioDevices, trimClip } from './capture/ffmpeg'
 import { disposeForegroundWatcher, listRunningApps } from './capture/foreground'
 import { pickRegion } from './capture/regionPicker'
+import { CloudAccount } from './cloud/account'
 import { checkWebhook, makeShareable, postClip } from './share/discord'
 import { clipOfTheDay, DailyDigest } from './highlights'
 import { healthCheck } from './health'
@@ -35,6 +36,7 @@ let registeredHotkey = ''
 const registeredKeys = new Set<string>()
 let hotkeySignature = ''
 let digest: DailyDigest | null = null
+let account: CloudAccount
 let quitting = false
 let currentMaterial: 'acrylic' | 'none' = 'none'
 
@@ -146,6 +148,44 @@ app.whenReady().then(async () => {
   settings = new SettingsStore()
   recorder = new Recorder(settings, dataDir)
   scheduler = new UploadScheduler(recorder.library, () => settings.get(), dataDir)
+  account = new CloudAccount(() => settings.get().cloud.serverUrl)
+  scheduler.gate = () => ({ ok: account.state.signedIn, slots: account.state.plan?.features.autoUploadSlots ?? 1 })
+  account.on('change', (st) => { send('account', st); tray?.refresh() })
+  void account.refresh()
+  setInterval(() => void account.refresh(), 10 * 60_000).unref()
+  let lastServer = settings.get().cloud.serverUrl
+  settings.onChange((s) => { if (s.cloud.serverUrl !== lastServer) { lastServer = s.cloud.serverUrl; void account.refresh() } })
+
+  /** Upload a web-friendly copy of a clip and remember its share link. */
+  const shareToCloud = async (clipId: string, onProgress?: (f: number) => void) => {
+    const clip = recorder.library.get(clipId)
+    if (!clip) throw new Error('Clip not found')
+    if (!account.state.signedIn) throw new Error('Sign in to use cloud features')
+    if (clip.cloud?.shareUrl && (!clip.cloud.expires || clip.cloud.expires > Date.now())) return clip.cloud
+    const maxMb = Math.floor((account.state.plan?.maxClipBytes ?? 100 * 1024 ** 2) / 1024 ** 2)
+    recorder.log('upload', `Preparing "${clip.title}" for the cloud…`, clip.id)
+    const { file } = await makeShareable(clip, Math.min(maxMb, 1000), path.join(dataDir, 'share'))
+    let last = 0
+    const res = await account.uploadClip({ title: clip.title, game: clip.game, duration: clip.durationSec, width: clip.width, height: clip.height }, file, clip.thumbnail, (f) => {
+      if (Date.now() - last > 300) { last = Date.now(); send('cloud-progress', { clipId, progress: f }); onProgress?.(f) }
+    })
+    const cloud = { id: res.id, shareUrl: res.shareUrl, uploadedAt: new Date().toISOString(), expires: res.expires }
+    recorder.library.update(clip.id, { cloud })
+    send('cloud-progress', { clipId, progress: 1 })
+    recorder.log('upload', `Share link ready for "${clip.title}": ${res.shareUrl}`, clip.id)
+    return cloud
+  }
+
+  // Pro: back up favorites in the background, one at a time.
+  let backingUp = false
+  setInterval(async () => {
+    const st = account.state
+    if (backingUp || !st.signedIn || !st.plan?.features.cloudBackup || !settings.get().cloud.backupFavorites) return
+    const next = recorder.library.all().find((c) => c.favorite && !c.cloud && c.trigger !== 'long')
+    if (!next) return
+    backingUp = true
+    try { await shareToCloud(next.id) } catch (e) { recorder.log('error', `Cloud backup paused: ${e instanceof Error ? e.message : String(e)}`) } finally { backingUp = false }
+  }, 90_000).unref()
   overlay = new OverlayToast()
 
   // cf://file/<absolute path> -> local file (thumbnails, clip playback)
@@ -265,6 +305,30 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('system:testOverlay', () => overlay?.show('Clipped!', 'This is how it looks in game', 'clip'))
   ipcMain.handle('system:canAcrylic', () => canAcrylic)
+  ipcMain.handle('account:get', () => account.state)
+  ipcMain.handle('account:refresh', async () => { await account.refresh(); return account.state })
+  ipcMain.handle('account:providers', () => account.providers())
+  ipcMain.handle('account:signIn', async (_e, provider: string) => { const st = await account.signIn(provider); showWindow(); return st })
+  ipcMain.handle('account:lastAuthUrl', () => account.lastAuthUrl)
+  ipcMain.handle('account:signOut', () => account.signOut())
+  ipcMain.handle('account:checkout', () => account.checkout())
+  ipcMain.handle('account:portal', () => account.portal())
+  ipcMain.handle('account:devPlan', (_e, plan: 'free' | 'pro') => account.devPlan(plan))
+  ipcMain.handle('cloud:share', (_e, clipId: string) => shareToCloud(clipId))
+  ipcMain.handle('cloud:unshare', async (_e, clipId: string) => {
+    const clip = recorder.library.get(clipId)
+    if (clip?.cloud) { await account.deleteCloud(clip.cloud.id).catch(() => undefined); recorder.library.update(clipId, { cloud: undefined }) }
+  })
+  ipcMain.handle('ads:get', (_e, placement: string) => {
+    const st = account.state
+    if (!settings.get().app.showAds || st.plan?.features.adFree) return []
+    return account.ads(placement)
+  })
+  ipcMain.handle('ads:open', (_e, ad: { id: string; url: string }) => {
+    account.adClick(ad.id)
+    if (ad.url === 'clutch://pro') { showWindow('settings'); send('open-pro', null); return }
+    if (/^https:\/\//.test(ad.url)) void shell.openExternal(ad.url)
+  })
   ipcMain.handle('capture:monitors', () => screen.getAllDisplays().map((d, i) => ({ index: i, label: d.label || `Monitor ${i + 1}`, width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor), primary: d.id === screen.getPrimaryDisplay().id })))
   ipcMain.handle('capture:pickRegion', async (_e, monitorIndex: number) => {
     win?.hide()
