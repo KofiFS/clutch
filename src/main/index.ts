@@ -3,6 +3,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Platform, Settings } from '../shared/types'
 import { detectEncoders, listAudioDevices, trimClip } from './capture/ffmpeg'
+import { listRunningApps } from './capture/foreground'
 import type { LibraryQuery } from './library'
 import { Recorder } from './recorder'
 import { SettingsStore } from './settings'
@@ -96,6 +97,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('system:audioDevices', () => listAudioDevices())
   ipcMain.handle('system:encoders', () => detectEncoders())
+  ipcMain.handle('system:runningApps', () => listRunningApps())
   ipcMain.handle('system:openExternal', (_e, url: string) => shell.openExternal(url))
 
   ipcMain.handle('buffer:start', () => recorder.start())

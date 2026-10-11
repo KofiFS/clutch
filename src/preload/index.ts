@@ -19,6 +19,7 @@ const api = {
   system: {
     audioDevices: (): Promise<string[]> => ipcRenderer.invoke('system:audioDevices'),
     encoders: (): Promise<{ available: string[]; best: string }> => ipcRenderer.invoke('system:encoders'),
+    runningApps: (): Promise<{ process: string; title: string }[]> => ipcRenderer.invoke('system:runningApps'),
     openExternal: (url: string) => ipcRenderer.invoke('system:openExternal', url)
   },
   buffer: {

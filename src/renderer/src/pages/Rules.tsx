@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { useStore } from '../lib/store'
 import { Field, Section, Toggle } from '../components/ui'
+import { GamePicker } from '../components/GamePicker'
 
 const PRESETS = [
   { name: 'Shooter kills', text: 'Clip every kill, headshot, multi-kill and clutch I get. Also clip when I die in a funny or embarrassing way. Never clip menus, loading screens, the scoreboard or buy phase.' },
@@ -11,14 +11,11 @@ const PRESETS = [
 
 export default function Rules() {
   const { settings, save } = useStore()
-  const [list, setList] = useState<{ allow: string; block: string } | null>(null)
   if (!settings) return null
   const v = settings.vision
   const vo = settings.voice
-  const lists = list ?? { allow: settings.allowlist.join(', '), block: settings.blocklist.join(', ') }
   const setVision = (patch: Partial<typeof v>) => save({ vision: { ...v, ...patch } })
   const setVoice = (patch: Partial<typeof vo>) => save({ voice: { ...vo, ...patch } })
-  const parse = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)
 
   return (
     <div className="space-y-6">
@@ -74,13 +71,13 @@ export default function Rules() {
         </div>
       </Section>
 
-      <Section title="Which games" desc="Match on the game's window title or process name (e.g. “Valorant”, “RocketLeague.exe”). Comma separated. The hotkey always works.">
+      <Section title="Which games" desc="Pick from what's running now or games you've already clipped. Matches the game's process or window title. The hotkey always works.">
         <div className="grid grid-cols-2 gap-4">
           <Field label="Never auto-clip in" hint="Discord, browsers, work apps…">
-            <input className="input" value={lists.block} placeholder="discord, chrome, Spotify" onChange={(e) => setList({ ...lists, block: e.target.value })} onBlur={() => void save({ blocklist: parse(lists.block) })} />
+            <GamePicker value={settings.blocklist} onChange={(blocklist) => void save({ blocklist })} placeholder="No games blocked" />
           </Field>
           <Field label="Only auto-clip in" hint="Leave empty to allow every game.">
-            <input className="input" value={lists.allow} placeholder="Valorant, Rocket League" onChange={(e) => setList({ ...lists, allow: e.target.value })} onBlur={() => void save({ allowlist: parse(lists.allow) })} />
+            <GamePicker value={settings.allowlist} onChange={(allowlist) => void save({ allowlist })} placeholder="Every game allowed" />
           </Field>
         </div>
       </Section>
