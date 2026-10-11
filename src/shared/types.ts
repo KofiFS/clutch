@@ -25,6 +25,12 @@ export interface CaptureSettings {
   clipHotkey: string
 }
 
+/** Per-game overrides of the capture settings. Keyed by lower-case process name. */
+export type GameProfile = Partial<Pick<CaptureSettings, 'fps' | 'quality' | 'resolutionScale' | 'preSeconds' | 'postSeconds'>> & {
+  /** Display name shown in the UI. */
+  name: string
+}
+
 export interface VisionRules {
   enabled: boolean
   /** Plain-English instructions, e.g. "Clip my kills and headshots. Never clip menus or loading screens." */
@@ -72,16 +78,38 @@ export interface AISettings {
   model: string
 }
 
+export interface AppBehavior {
+  /** First-run wizard completed. */
+  onboarded: boolean
+  /** Closing the window hides to the tray instead of quitting. */
+  minimizeToTray: boolean
+  /** Launch minimized to the tray. */
+  startMinimized: boolean
+  /** Show a small always-on-top "Clipped!" overlay on screen when a clip is saved. */
+  overlayToasts: boolean
+  /** Play a short sound when a clip is saved. */
+  clipSound: boolean
+  /** Automatically start the replay buffer when a game comes to the front. */
+  autoStart: 'off' | 'games'
+  /** Stop the buffer this many minutes after the last game closed (0 = never). */
+  autoStopMinutes: number
+  /** Keep deleted clips in a trash folder so they can be restored. */
+  useTrash: boolean
+}
+
 export interface Settings {
   capture: CaptureSettings
   vision: VisionRules
   voice: VoiceRules
   upload: UploadSettings
   ai: AISettings
+  app: AppBehavior
   /** Games (process names) never recorded, e.g. ["discord.exe"]. */
   blocklist: string[]
   /** If non-empty, only record when one of these processes is in the foreground. */
   allowlist: string[]
+  /** Per-game capture overrides. */
+  profiles: Record<string, GameProfile>
   startBufferOnLaunch: boolean
 }
 
@@ -95,6 +123,10 @@ export interface Clip {
   durationSec: number
   sizeBytes: number
   game: string
+  /** Lower-case process name of the game, for icons and profiles. */
+  gameProcess?: string
+  /** Cached icon path (png) for the game, if we could extract one. */
+  gameIcon?: string
   title: string
   trigger: TriggerSource
   /** What the vision model said happened, if anything. */
@@ -105,6 +137,8 @@ export interface Clip {
   height: number
   fps: number
   uploads: UploadRecord[]
+  /** Set while the clip sits in the trash. */
+  trashedAt?: string
 }
 
 export interface UploadRecord {
@@ -115,30 +149,62 @@ export interface UploadRecord {
   progress: number
   url?: string
   error?: string
+  /** Per-upload overrides of the template values. */
+  title?: string
+  description?: string
+  tags?: string[]
+  privacy?: 'private' | 'unlisted' | 'public'
+}
+
+export interface GameInfo {
+  name: string
+  process: string
+  exePath?: string
+  icon?: string
+  fullscreen?: boolean
+  isGame?: boolean
 }
 
 export interface BufferStatus {
   running: boolean
+  starting?: boolean
   since?: string
   encoder?: string
   game?: string
+  gameInfo?: GameInfo
   fps?: number
   resolution?: string
   lastError?: string
   micLevelDb?: number
   systemLevelDb?: number
+  systemAudioActive?: boolean
   visionLastCheck?: string
   visionLastVerdict?: string
   recordingBlocked?: string
+  hotkeyRegistered?: boolean
+  /** Seconds currently available in the buffer. */
+  bufferedSeconds?: number
+  talking?: boolean
 }
 
 export interface ActivityEvent {
   at: string
-  kind: 'info' | 'clip' | 'error' | 'vision' | 'voice' | 'upload'
+  kind: 'info' | 'clip' | 'error' | 'vision' | 'voice' | 'upload' | 'game'
   message: string
+  clipId?: string
 }
 
-export interface AudioDevice { name: string }
+export interface HealthItem {
+  id: string
+  label: string
+  ok: boolean | 'warn'
+  detail: string
+  fix?: 'settings' | 'rules' | 'uploads'
+}
+
+export interface AudioDevice {
+  name: string
+}
 
 export const DEFAULT_SETTINGS: Settings = {
   capture: {
@@ -153,7 +219,7 @@ export const DEFAULT_SETTINGS: Settings = {
     micDevice: '',
     systemAudio: true,
     outputDir: '',
-    clipHotkey: 'F8'
+    clipHotkey: 'F9'
   },
   vision: {
     enabled: false,
@@ -183,7 +249,39 @@ export const DEFAULT_SETTINGS: Settings = {
     schedule: { enabled: false, times: ['18:00'], source: 'favorites', tag: 'upload', platforms: ['youtube'] }
   },
   ai: { anthropicApiKey: '', model: 'claude-opus-5-5' },
+  app: {
+    onboarded: false,
+    minimizeToTray: true,
+    startMinimized: false,
+    overlayToasts: true,
+    clipSound: true,
+    autoStart: 'games',
+    autoStopMinutes: 5,
+    useTrash: true
+  },
   blocklist: [],
   allowlist: [],
+  profiles: {},
   startBufferOnLaunch: false
+}
+
+export const QUALITY_PRESETS: { id: string; name: string; desc: string; capture: Partial<CaptureSettings> }[] = [
+  { id: 'best', name: 'Best quality', desc: 'Native resolution, CQ 19. Big files, looks perfect.', capture: { resolutionScale: 1, quality: 19, fps: 60 } },
+  { id: 'balanced', name: 'Balanced', desc: 'Native resolution, CQ 23. Great for YouTube.', capture: { resolutionScale: 1, quality: 23, fps: 60 } },
+  { id: 'small', name: 'Small files', desc: '75% resolution, CQ 27. Easy to share.', capture: { resolutionScale: 0.75, quality: 27, fps: 60 } },
+  { id: 'smooth', name: 'High frame rate', desc: 'Native, 120 fps, CQ 23. For slow-mo and shooters.', capture: { resolutionScale: 1, quality: 23, fps: 120 } }
+]
+
+export interface RunningApp {
+  process: string
+  title: string
+  exePath: string
+  icon?: string
+}
+
+export interface GameSummary {
+  name: string
+  process?: string
+  icon?: string
+  count: number
 }

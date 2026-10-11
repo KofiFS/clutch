@@ -12,9 +12,21 @@ export interface LibraryQuery {
   favoritesOnly?: boolean
   tag?: string
   sort?: 'newest' | 'oldest' | 'longest' | 'largest'
+  /** Include trashed clips (only). */
+  trashed?: boolean
 }
 
-/** JSON-backed clip index. One folder of mp4s + thumbnails, one index file. */
+export interface AddMeta {
+  game: string
+  gameProcess?: string
+  gameIcon?: string
+  trigger: TriggerSource
+  event?: string
+  title?: string
+  tags?: string[]
+}
+
+/** JSON-backed clip index. One folder of mp4s + thumbnails, one index file, optional trash folder. */
 export class Library extends EventEmitter<{ change: [] }> {
   private clips: Clip[] = []
   private indexFile: string
@@ -38,23 +50,30 @@ export class Library extends EventEmitter<{ change: [] }> {
   }
 
   all(): Clip[] {
-    return this.clips
+    return this.clips.filter((c) => !c.trashedAt)
   }
 
   get(id: string): Clip | undefined {
     return this.clips.find((c) => c.id === id)
   }
 
-  games(): string[] {
-    return [...new Set(this.clips.map((c) => c.game))].sort()
+  games(): { name: string; process?: string; icon?: string; count: number }[] {
+    const map = new Map<string, { name: string; process?: string; icon?: string; count: number }>()
+    for (const c of this.all()) {
+      const e = map.get(c.game) ?? { name: c.game, process: c.gameProcess, icon: c.gameIcon, count: 0 }
+      e.count++
+      if (!e.icon && c.gameIcon) e.icon = c.gameIcon
+      map.set(c.game, e)
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count)
   }
 
   tags(): string[] {
-    return [...new Set(this.clips.flatMap((c) => c.tags))].sort()
+    return [...new Set(this.all().flatMap((c) => c.tags))].sort()
   }
 
   query(q: LibraryQuery): Clip[] {
-    let out = this.clips.filter((c) => fs.existsSync(c.file))
+    let out = this.clips.filter((c) => (q.trashed ? !!c.trashedAt : !c.trashedAt) && fs.existsSync(c.file))
     if (q.game) out = out.filter((c) => c.game === q.game)
     if (q.trigger && q.trigger !== 'all') out = out.filter((c) => c.trigger === q.trigger)
     if (q.favoritesOnly) out = out.filter((c) => c.favorite)
@@ -73,7 +92,7 @@ export class Library extends EventEmitter<{ change: [] }> {
   }
 
   /** Register a freshly exported mp4: probe it, build a thumbnail, add to the index. */
-  async add(file: string, meta: { game: string; trigger: TriggerSource; event?: string; title?: string; tags?: string[] }): Promise<Clip> {
+  async add(file: string, meta: AddMeta): Promise<Clip> {
     const id = randomUUID()
     const info = await probe(file)
     const thumbnail = path.join(this.thumbDir, `${id}.jpg`)
@@ -86,6 +105,8 @@ export class Library extends EventEmitter<{ change: [] }> {
       durationSec: info.durationSec,
       sizeBytes: fs.statSync(file).size,
       game: meta.game || 'Unknown',
+      gameProcess: meta.gameProcess,
+      gameIcon: meta.gameIcon,
       title: meta.title || meta.event || defaultTitle(meta.trigger),
       trigger: meta.trigger,
       event: meta.event,
@@ -109,22 +130,77 @@ export class Library extends EventEmitter<{ change: [] }> {
     return c
   }
 
-  remove(id: string, deleteFile = true) {
+  bulk(ids: string[], patch: { favorite?: boolean; addTags?: string[] }) {
+    for (const id of ids) {
+      const c = this.get(id)
+      if (!c) continue
+      if (patch.favorite !== undefined) c.favorite = patch.favorite
+      if (patch.addTags) c.tags = [...new Set([...c.tags, ...patch.addTags])]
+    }
+    this.save()
+  }
+
+  /** Move the file into <clips>/.trash so it can be restored. */
+  trash(id: string): Clip | undefined {
+    const c = this.get(id)
+    if (!c || c.trashedAt) return
+    const trashDir = path.join(path.dirname(path.dirname(c.file)), '.trash')
+    try {
+      fs.mkdirSync(trashDir, { recursive: true })
+      const dest = path.join(trashDir, path.basename(c.file))
+      fs.renameSync(c.file, dest)
+      c.file = dest
+    } catch {
+      /* file already gone; keep index consistent */
+    }
+    c.trashedAt = new Date().toISOString()
+    this.save()
+    return c
+  }
+
+  restore(id: string): Clip | undefined {
+    const c = this.get(id)
+    if (!c || !c.trashedAt) return
+    const safeGame = c.game.replace(/[^\w\- ]+/g, '').trim() || 'Clip'
+    const dest = path.join(path.dirname(path.dirname(c.file)), safeGame, path.basename(c.file))
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      fs.renameSync(c.file, dest)
+      c.file = dest
+    } catch {
+      /* leave in place */
+    }
+    delete c.trashedAt
+    this.save()
+    return c
+  }
+
+  /** Permanently delete (used for emptying the trash and when the trash is disabled). */
+  remove(id: string) {
     const c = this.get(id)
     if (!c) return
     this.clips = this.clips.filter((x) => x.id !== id)
-    if (deleteFile) {
-      try { fs.unlinkSync(c.file) } catch { /* ignore */ }
-    }
+    try { fs.unlinkSync(c.file) } catch { /* ignore */ }
     try { fs.unlinkSync(c.thumbnail) } catch { /* ignore */ }
     this.save()
   }
 
-  /** Drop index entries whose files were deleted outside the app. */
+  emptyTrash() {
+    for (const c of this.clips.filter((x) => x.trashedAt)) this.remove(c.id)
+  }
+
+  /** Drop index entries whose files were deleted outside the app; purge trash older than 30 days. */
   reconcile() {
     const before = this.clips.length
+    const cutoff = Date.now() - 30 * 86400_000
+    for (const c of this.clips.filter((x) => x.trashedAt && Date.parse(x.trashedAt) < cutoff)) this.remove(c.id)
     this.clips = this.clips.filter((c) => fs.existsSync(c.file))
     if (this.clips.length !== before) this.save()
+  }
+
+  stats() {
+    const live = this.all()
+    return { count: live.length, bytes: live.reduce((n, c) => n + c.sizeBytes, 0), seconds: live.reduce((n, c) => n + c.durationSec, 0), trashed: this.clips.filter((c) => c.trashedAt).length }
   }
 }
 

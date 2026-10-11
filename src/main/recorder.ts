@@ -1,31 +1,44 @@
 import { EventEmitter } from 'node:events'
 import { screen } from 'electron'
 import path from 'node:path'
-import type { ActivityEvent, BufferStatus, Settings, TriggerSource } from '../shared/types'
+import type { ActivityEvent, BufferStatus, CaptureSettings, Clip, GameInfo, Settings, TriggerSource } from '../shared/types'
 import { ReplayBuffer } from './capture/replayBuffer'
-import { gameNameFrom, getForegroundApp } from './capture/foreground'
+import { getForegroundApp, toGameInfo } from './capture/foreground'
 import { Library } from './library'
 import type { SettingsStore } from './settings'
 import { VisionJudge } from './triggers/vision'
 import { VoiceDetector } from './triggers/voice'
 
 const VISION_COOLDOWN_MS = 20_000
+const GAME_POLL_MS = 3000
+
+export interface RecorderEvents {
+  status: [BufferStatus]
+  activity: [ActivityEvent]
+  clip: [Clip]
+  game: [GameInfo]
+}
 
 /**
- * Coordinates the replay buffer, the triggers (hotkey / voice / vision) and the library.
+ * Coordinates the replay buffer, the triggers (hotkey / voice / vision), game detection and the library.
  * Every trigger ends up in `clipRange`, which cuts the clip and registers it.
  */
-export class Recorder extends EventEmitter<{ status: [BufferStatus]; activity: [ActivityEvent] }> {
+export class Recorder extends EventEmitter<RecorderEvents> {
   readonly buffer: ReplayBuffer
   readonly library: Library
   readonly voice: VoiceDetector
   private vision: VisionJudge
   status: BufferStatus = { running: false }
   activity: ActivityEvent[] = []
-  private game = 'Desktop'
-  private fgProcess = ''
+  game: GameInfo = { name: 'Desktop', process: '' }
   private gameTimer: NodeJS.Timeout | null = null
+  private statusTimer: NodeJS.Timeout | null = null
   private lastVisionClipAt = 0
+  private lastSysAudioAt = 0
+  private lastGameSeenAt = 0
+  private autoStarted = false
+  private starting = false
+  private activeCapture: CaptureSettings | null = null
   private pendingRanges: { startMs: number; endMs: number }[] = []
 
   constructor(private settings: SettingsStore, dataDir: string) {
@@ -36,20 +49,30 @@ export class Recorder extends EventEmitter<{ status: [BufferStatus]; activity: [
     this.vision = new VisionJudge(settings.get().ai.anthropicApiKey, settings.get().ai.model)
 
     this.buffer.on('status', (st) => {
-      this.status = { ...this.status, running: st.running, encoder: st.encoder ?? this.status.encoder, resolution: st.resolution ?? this.status.resolution, fps: st.fps ?? this.status.fps, lastError: st.error, since: st.running ? new Date().toISOString() : undefined }
+      this.status = {
+        ...this.status,
+        running: st.running,
+        starting: false,
+        encoder: st.encoder ?? this.status.encoder,
+        resolution: st.resolution ?? this.status.resolution,
+        fps: st.fps ?? this.status.fps,
+        lastError: st.error,
+        since: st.running ? this.status.since ?? new Date().toISOString() : undefined
+      }
       if (st.error) this.log('error', st.error)
-      if (!st.running) this.voice.stop()
+      if (!st.running) { this.voice.stop(); this.status.talking = false; this.activeCapture = null }
       this.pushStatus()
     })
-    this.buffer.on('levels', ({ micDb, sysDb }) => {
+    this.buffer.on('levels', ({ micDb }) => {
       this.status.micLevelDb = micDb
-      this.status.systemLevelDb = sysDb
-      this.voice.onLevels(micDb, sysDb, 'mic')
+      this.voice.onLevels(micDb, this.status.systemLevelDb ?? -100, 'mic')
     })
     this.buffer.on('log', (line) => this.log('info', line))
     this.buffer.on('snapshot', (jpeg) => void this.onSnapshot(jpeg))
     this.voice.on('state', (st) => {
-      if (st.talking && this.settings.get().voice.enabled) this.log('voice', 'Voice detected, clip will be saved when it goes quiet')
+      this.status.talking = st.talking
+      if (st.talking && this.settings.get().voice.enabled) this.log('voice', 'Voice detected - clip will be saved when it goes quiet')
+      this.pushStatus()
     })
     this.voice.on('talk', (seg) => {
       if (!this.settings.get().voice.enabled) return
@@ -62,89 +85,150 @@ export class Recorder extends EventEmitter<{ status: [BufferStatus]; activity: [
       this.buffer.snapshotIntervalSec = s.vision.intervalSeconds
     })
     this.buffer.snapshotIntervalSec = settings.get().vision.intervalSeconds
+
+    this.gameTimer = setInterval(() => void this.pollGame(), GAME_POLL_MS)
+    void this.pollGame()
+    // Light status heartbeat: buffered seconds + system-audio liveness.
+    this.statusTimer = setInterval(() => {
+      if (!this.status.running) return
+      const oldest = this.buffer.oldestAvailableMs()
+      this.status.bufferedSeconds = oldest ? Math.round((Date.now() - oldest) / 1000) : 0
+      this.status.systemAudioActive = Date.now() - this.lastSysAudioAt < 1500
+      this.pushStatus()
+    }, 2000)
   }
 
   private pushStatus() {
-    this.status.game = this.game
+    this.status.game = this.game.name
+    this.status.gameInfo = this.game
     this.emit('status', { ...this.status })
   }
 
-  log(kind: ActivityEvent['kind'], message: string) {
-    const ev: ActivityEvent = { at: new Date().toISOString(), kind, message }
+  setHotkeyRegistered(ok: boolean) {
+    this.status.hotkeyRegistered = ok
+    this.pushStatus()
+  }
+
+  log(kind: ActivityEvent['kind'], message: string, clipId?: string) {
+    const ev: ActivityEvent = { at: new Date().toISOString(), kind, message, clipId }
     this.activity.unshift(ev)
     this.activity = this.activity.slice(0, 300)
     this.emit('activity', ev)
   }
 
-  async start() {
+  /** Capture settings with the current game's profile applied. */
+  effectiveCapture(): CaptureSettings {
     const s = this.settings.get()
+    const profile = s.profiles[this.game.process]
+    if (!profile) return s.capture
+    const { name: _name, ...overrides } = profile
+    return { ...s.capture, ...overrides }
+  }
+
+  async start(reason: 'manual' | 'auto' = 'manual') {
+    if (this.starting || this.status.running) return
+    this.starting = true
+    this.status.starting = true
+    this.status.lastError = undefined
+    this.pushStatus()
+    const s = this.settings.get()
+    const capture = this.effectiveCapture()
     try {
       const displays = screen.getAllDisplays()
-      const d = displays[Math.min(s.capture.monitorIndex, displays.length - 1)] ?? screen.getPrimaryDisplay()
-      await this.buffer.start(s.capture, { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) })
+      const d = displays[Math.min(capture.monitorIndex, displays.length - 1)] ?? screen.getPrimaryDisplay()
+      this.status.since = new Date().toISOString()
+      await this.buffer.start(capture, { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) })
+      this.activeCapture = capture
+      this.autoStarted = reason === 'auto'
       this.voice.start()
       this.vision.reset()
-      this.log('info', `Replay buffer started (${this.buffer.encoder}, ${this.buffer.resolution} @ ${s.capture.fps} fps, keeps ${s.capture.bufferSeconds}s)`)
-      if (!this.gameTimer) {
-        this.gameTimer = setInterval(() => void this.pollGame(), 3000)
-        void this.pollGame()
-      }
+      const profileNote = s.profiles[this.game.process] ? ` using the ${s.profiles[this.game.process].name} profile` : ''
+      this.log('info', `Recording started${reason === 'auto' ? ` for ${this.game.name}` : ''} (${this.buffer.encoder}, ${this.buffer.resolution} @ ${capture.fps} fps, keeps ${capture.bufferSeconds}s)${profileNote}`)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      this.status = { running: false, lastError: msg }
+      this.status = { ...this.status, running: false, starting: false, lastError: msg }
       this.log('error', msg)
+      this.pushStatus()
+    } finally {
+      this.starting = false
+      this.status.starting = false
       this.pushStatus()
     }
   }
 
-  async stop() {
+  async stop(reason: 'manual' | 'auto' = 'manual') {
+    if (!this.status.running && !this.buffer.running) return
     await this.buffer.stop()
     this.voice.stop()
-    if (this.gameTimer) clearInterval(this.gameTimer)
-    this.gameTimer = null
-    this.log('info', 'Replay buffer stopped')
+    this.autoStarted = false
+    this.log('info', reason === 'auto' ? 'Recording stopped - no game open' : 'Recording stopped')
   }
 
   pushSystemAudio(pcm: Buffer, levelDb: number) {
     this.buffer.pushSystemAudio(pcm, levelDb)
+    this.lastSysAudioAt = Date.now()
     this.status.systemLevelDb = levelDb
     this.voice.onLevels(this.status.micLevelDb ?? -100, levelDb, 'sys')
   }
 
   private async pollGame() {
-    const fg = await getForegroundApp()
-    const name = gameNameFrom(fg)
-    this.fgProcess = fg.process.toLowerCase()
-    if (name !== this.game) {
-      this.game = name
-      this.vision.reset()
-    }
     const s = this.settings.get()
+    const fg = await getForegroundApp()
+    const info = await toGameInfo(fg, s.allowlist)
+    const changed = info.process !== this.game.process
+    if (changed) {
+      this.game = info
+      this.vision.reset()
+      this.emit('game', info)
+      if (info.isGame) this.log('game', `${info.name} is in front`)
+    }
+    if (info.isGame) this.lastGameSeenAt = Date.now()
+
     const blocked = this.recordingBlockedReason(s)
-    const changed = blocked !== this.status.recordingBlocked
+    const blockedChanged = blocked !== this.status.recordingBlocked
     this.status.recordingBlocked = blocked
-    if (changed || name !== this.status.game) this.pushStatus()
+
+    // Auto start / stop
+    if (s.app.autoStart === 'games' && info.isGame && !blocked && !this.status.running && !this.starting) {
+      this.log('game', `Starting recording for ${info.name}`)
+      await this.start('auto')
+    } else if (this.autoStarted && this.status.running && s.app.autoStopMinutes > 0 && Date.now() - this.lastGameSeenAt > s.app.autoStopMinutes * 60_000) {
+      await this.stop('auto')
+    }
+
+    // Per-game profile switch while running
+    if (changed && this.status.running && this.activeCapture && info.isGame) {
+      const next = this.effectiveCapture()
+      const differs = (['fps', 'quality', 'resolutionScale'] as const).some((k) => next[k] !== this.activeCapture![k])
+      if (differs) {
+        this.log('game', `Switching to the ${s.profiles[info.process]?.name ?? 'default'} capture profile for ${info.name}`)
+        await this.buffer.stop()
+        await this.start(this.autoStarted ? 'auto' : 'manual')
+      }
+    }
+    if (changed || blockedChanged) this.pushStatus()
   }
 
   /** Allow/block lists: "tell it what to record / not record" at the game level. */
   private recordingBlockedReason(s: Settings): string | undefined {
-    const proc = this.fgProcess
+    const proc = this.game.process
     const norm = (x: string) => x.toLowerCase().replace(/\.exe$/, '').trim()
-    if (s.blocklist.some((b) => norm(b) && (norm(b) === proc || this.game.toLowerCase().includes(norm(b))))) return `${this.game} is on your "never record" list`
-    if (s.allowlist.length && !s.allowlist.some((a) => norm(a) && (norm(a) === proc || this.game.toLowerCase().includes(norm(a))))) return `${this.game} is not on your "only record" list`
+    const matches = (x: string) => norm(x) && (norm(x) === proc || this.game.name.toLowerCase().includes(norm(x)))
+    if (s.blocklist.some(matches)) return `${this.game.name} is on your "never clip" list`
+    if (s.allowlist.length && !s.allowlist.some(matches)) return `${this.game.name} is not on your "only clip in" list`
     return undefined
   }
 
   /** Hotkey / manual: clip the last `preSeconds` plus the next `postSeconds`. */
   async clipNow(trigger: TriggerSource = 'hotkey') {
-    const c = this.settings.get().capture
+    const c = this.effectiveCapture()
     const now = Date.now()
     return this.clipRange(now - c.preSeconds * 1000, now + c.postSeconds * 1000, trigger)
   }
 
   async clipRange(startMs: number, endMs: number, trigger: TriggerSource, meta: { event?: string; title?: string } = {}) {
     if (!this.buffer.running) {
-      this.log('error', 'Cannot clip: replay buffer is not running')
+      this.log('error', 'Cannot clip: recording is not running')
       return
     }
     const blocked = this.status.recordingBlocked
@@ -154,19 +238,20 @@ export class Recorder extends EventEmitter<{ status: [BufferStatus]; activity: [
     }
     const oldest = this.buffer.oldestAvailableMs()
     if (oldest) startMs = Math.max(startMs, oldest)
-    if (this.pendingRanges.some((r) => startMs < r.endMs && endMs > r.startMs && trigger !== 'hotkey')) return
+    if (this.pendingRanges.some((r) => startMs < r.endMs && endMs > r.startMs && trigger !== 'hotkey' && trigger !== 'manual')) return
     const range = { startMs, endMs }
     this.pendingRanges.push(range)
     const game = this.game
     const c = this.settings.get().capture
     const stamp = new Date(startMs).toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const safeGame = game.replace(/[^\w\- ]+/g, '').trim() || 'Clip'
+    const safeGame = game.name.replace(/[^\w\- ]+/g, '').trim() || 'Clip'
     const outFile = path.join(c.outputDir, safeGame, `${safeGame} ${stamp}.mp4`)
-    this.log('info', `Saving ${trigger} clip (${Math.round((endMs - startMs) / 1000)}s)…`)
+    this.log('info', `Saving ${trigger === 'manual' ? '' : trigger + ' '}clip (${Math.round((endMs - startMs) / 1000)}s)…`)
     try {
       const { file } = await this.buffer.saveRange({ startMs, endMs, outFile })
-      const clip = await this.library.add(file, { game, trigger, event: meta.event, title: meta.title })
-      this.log('clip', `Saved "${clip.title}" (${Math.round(clip.durationSec)}s)`)
+      const clip = await this.library.add(file, { game: game.name, gameProcess: game.process || undefined, gameIcon: game.icon, trigger, event: meta.event, title: meta.title })
+      this.log('clip', `Saved "${clip.title}" (${Math.round(clip.durationSec)}s)`, clip.id)
+      this.emit('clip', clip)
       return clip
     } catch (e) {
       this.log('error', e instanceof Error ? e.message : String(e))
@@ -180,7 +265,7 @@ export class Recorder extends EventEmitter<{ status: [BufferStatus]; activity: [
     if (!s.vision.enabled || !this.vision.ready || this.status.recordingBlocked) return
     if (Date.now() - this.lastVisionClipAt < VISION_COOLDOWN_MS) return
     try {
-      const verdict = await this.vision.judge(jpeg, s.vision, this.game)
+      const verdict = await this.vision.judge(jpeg, s.vision, this.game.name)
       if (!verdict) return
       this.status.visionLastCheck = new Date().toISOString()
       this.status.visionLastVerdict = verdict.clip ? `${verdict.event} (${Math.round(verdict.confidence * 100)}%)` : `nothing (${verdict.why})`
@@ -189,11 +274,17 @@ export class Recorder extends EventEmitter<{ status: [BufferStatus]; activity: [
         this.lastVisionClipAt = Date.now()
         this.log('vision', `Detected: ${verdict.event} - ${verdict.why}`)
         const now = Date.now()
-        const start = now - (verdict.secondsAgo + s.capture.preSeconds) * 1000
-        await this.clipRange(start, now + s.capture.postSeconds * 1000, 'vision', { event: verdict.event })
+        const c = this.effectiveCapture()
+        const start = now - (verdict.secondsAgo + c.preSeconds) * 1000
+        await this.clipRange(start, now + c.postSeconds * 1000, 'vision', { event: verdict.event })
       }
     } catch (e) {
       this.log('error', `Vision check failed: ${e instanceof Error ? e.message : String(e)}`)
     }
+  }
+
+  dispose() {
+    if (this.gameTimer) clearInterval(this.gameTimer)
+    if (this.statusTimer) clearInterval(this.statusTimer)
   }
 }

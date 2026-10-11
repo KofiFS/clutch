@@ -5,7 +5,6 @@
  * The worklet itself lives in public/pcm-worklet.js.
  */
 
-
 let ctx: AudioContext | null = null
 let stream: MediaStream | null = null
 
@@ -36,4 +35,48 @@ export function stopLoopback() {
 
 export function loopbackActive() {
   return !!ctx
+}
+
+/**
+ * Lightweight level meter for onboarding / settings previews. Works without FFmpeg.
+ * `source` = 'mic' uses getUserMedia (optionally matching a device label), 'system' uses loopback.
+ */
+export async function startMeter(source: 'mic' | 'system', onLevel: (db: number) => void, deviceLabel?: string): Promise<() => void> {
+  let s: MediaStream
+  if (source === 'system') {
+    s = await navigator.mediaDevices.getDisplayMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: true })
+    s.getVideoTracks().forEach((t) => t.stop())
+  } else {
+    let deviceId: string | undefined
+    if (deviceLabel) {
+      // Labels are only visible after one permission grant; try, then match.
+      try {
+        const probe = await navigator.mediaDevices.getUserMedia({ audio: true })
+        probe.getTracks().forEach((t) => t.stop())
+      } catch { /* ignore */ }
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const norm = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').replace(/[()]/g, '').trim()
+      const match = devices.find((d) => d.kind === 'audioinput' && norm(d.label).includes(norm(deviceLabel).slice(0, 24)))
+      deviceId = match?.deviceId
+    }
+    s = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } : { echoCancellation: false, noiseSuppression: false } })
+  }
+  const ac = new AudioContext()
+  const an = ac.createAnalyser()
+  an.fftSize = 2048
+  ac.createMediaStreamSource(s).connect(an)
+  const buf = new Float32Array(an.fftSize)
+  // setInterval rather than requestAnimationFrame: rAF pauses when the window is occluded.
+  const timer = setInterval(() => {
+    an.getFloatTimeDomainData(buf)
+    let sum = 0
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
+    const rms = Math.sqrt(sum / buf.length)
+    onLevel(rms > 0 ? 20 * Math.log10(rms) : -100)
+  }, 80)
+  return () => {
+    clearInterval(timer)
+    s.getTracks().forEach((t) => t.stop())
+    void ac.close()
+  }
 }

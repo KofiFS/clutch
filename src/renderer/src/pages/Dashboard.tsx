@@ -1,98 +1,141 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, Clapperboard, Eye, Mic, UploadCloud, Zap } from 'lucide-react'
-import type { Clip } from '../../../shared/types'
-import { fileUrl, fmtDuration, timeAgo, useStore } from '../lib/store'
-import { LevelMeter, Section } from '../components/ui'
+import { AlertCircle, Clapperboard, Eye, Gamepad2, Mic, UploadCloud, Zap, Film, ChevronRight, Activity } from 'lucide-react'
+import type { Clip, HealthItem } from '../../../shared/types'
+import { fileUrl, fmtBytes, fmtDuration, timeAgo, useStore } from '../lib/store'
+import { GameIcon, LevelMeter, Section, Badge, Kbd } from '../components/ui'
 
-export default function Dashboard({ onNavigate }: { onNavigate: (p: 'library' | 'rules' | 'settings' | 'uploads') => void }) {
-  const { status, activity, settings, libraryVersion, start, clipNow } = useStore()
+export default function Dashboard() {
+  const { status, activity, settings, libraryVersion, start, clipNow, setPage, openClip, game, loopbackError } = useStore()
   const [recent, setRecent] = useState<Clip[]>([])
-  useEffect(() => { void window.cf.library.query({ sort: 'newest' }).then((c) => setRecent(c.slice(0, 6))) }, [libraryVersion])
+  const [stats, setStats] = useState<{ count: number; bytes: number; seconds: number } | null>(null)
+  const [health, setHealth] = useState<HealthItem[]>([])
+  useEffect(() => {
+    void window.cf.library.query({ sort: 'newest' }).then((c) => setRecent(c.slice(0, 8)))
+    void window.cf.library.stats().then(setStats)
+  }, [libraryVersion])
+  useEffect(() => { void window.cf.system.health().then(setHealth) }, [status.running, status.hotkeyRegistered, settings])
   if (!settings) return null
 
-  const kindIcon = { clip: Clapperboard, vision: Eye, voice: Mic, upload: UploadCloud, error: AlertCircle, info: Zap } as const
+  const problems = health.filter((h) => h.ok === false)
+  const kindIcon = { clip: Clapperboard, vision: Eye, voice: Mic, upload: UploadCloud, error: AlertCircle, info: Zap, game: Gamepad2 } as const
   const triggers = [
-    { on: true, label: `Hotkey ${settings.capture.clipHotkey}`, desc: `${settings.capture.preSeconds}s back + ${settings.capture.postSeconds}s` },
-    { on: settings.vision.enabled && !!settings.ai.anthropicApiKey, label: 'Watch for moments', desc: settings.vision.enabled ? (settings.ai.anthropicApiKey ? `checks every ${settings.vision.intervalSeconds}s` : 'needs an API key') : 'off' },
-    { on: settings.voice.enabled, label: 'When people talk', desc: settings.voice.enabled ? `${[settings.voice.onMic && 'mic', settings.voice.onSystemAudio && 'voice chat'].filter(Boolean).join(' + ')}` : 'off' }
+    { on: !!settings.capture.clipHotkey && status.hotkeyRegistered !== false, icon: Zap, label: 'Hotkey', desc: settings.capture.clipHotkey ? `${settings.capture.clipHotkey} · ${settings.capture.preSeconds}s back + ${settings.capture.postSeconds}s` : 'Not set', page: 'settings' as const },
+    { on: settings.vision.enabled && !!(settings.ai.anthropicApiKey), icon: Eye, label: 'Watching the screen', desc: settings.vision.enabled ? (settings.ai.anthropicApiKey ? `Every ${settings.vision.intervalSeconds}s · ${status.visionLastVerdict ?? 'waiting'}` : 'Needs an API key') : 'Off', page: 'rules' as const },
+    { on: settings.voice.enabled, icon: Mic, label: 'When people talk', desc: settings.voice.enabled ? (status.talking ? 'Talking now…' : [settings.voice.onMic && 'mic', settings.voice.onSystemAudio && 'voice chat'].filter(Boolean).join(' + ')) : 'Off', page: 'rules' as const }
   ]
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-muted text-sm mt-1">{status.running ? `Buffering the last ${settings.capture.bufferSeconds}s of ${status.game ?? 'your screen'}.` : 'Start the buffer, then clip with the hotkey or let the triggers do it.'}</p>
+      {/* Hero */}
+      <section className={`card relative overflow-hidden p-6 ${status.running ? 'border-live/30' : ''}`}>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: status.running ? 'radial-gradient(600px 200px at 10% 0%, rgba(34,211,238,0.12), transparent)' : 'radial-gradient(600px 200px at 10% 0%, rgba(139,108,255,0.14), transparent)' }} />
+        <div className="relative flex items-center gap-6">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              {status.running ? <Badge tone="live"><span className="w-1.5 h-1.5 rounded-full bg-live pulse-dot" /> Recording</Badge> : <Badge>Idle</Badge>}
+              {game && (
+                <span className="flex items-center gap-1.5 text-sm text-ink-2 min-w-0">
+                  <GameIcon src={game.icon ? fileUrl(game.icon) : undefined} name={game.name} size={18} />
+                  <span className="truncate">{game.name}</span>
+                </span>
+              )}
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {status.running ? `The last ${Math.min(status.bufferedSeconds ?? 0, settings.capture.bufferSeconds)} seconds are ready to clip.` : settings.app.autoStart === 'games' ? 'Open a game and recording starts by itself.' : 'Start recording, then clip the moments that matter.'}
+            </h1>
+            <p className="text-ink-2 mt-1.5 text-sm">
+              {status.running
+                ? `${status.resolution} at ${status.fps} fps · ${status.encoder} · keeping ${settings.capture.bufferSeconds}s`
+                : status.lastError ? 'The last recording stopped with an error. Details below.' : `Hotkey ${settings.capture.clipHotkey || 'not set'} saves the previous ${settings.capture.preSeconds}s plus ${settings.capture.postSeconds}s after.`}
+            </p>
+            <div className="flex items-center gap-2 mt-5">
+              {status.running ? (
+                <button className="btn-live px-5" onClick={() => void clipNow()}><Zap size={16} /> Clip the last {settings.capture.preSeconds}s {settings.capture.clipHotkey && <Kbd>{settings.capture.clipHotkey}</Kbd>}</button>
+              ) : (
+                <button className="btn-primary px-5" disabled={status.starting} onClick={() => void start()}>{status.starting ? 'Starting…' : 'Start recording'}</button>
+              )}
+              <button className="btn" onClick={() => setPage('rules')}>What to clip</button>
+            </div>
+          </div>
+          {stats && (
+            <div className="hidden lg:grid grid-cols-3 gap-3 text-center shrink-0">
+              {[[stats.count, 'clips'], [fmtDuration(stats.seconds), 'recorded'], [fmtBytes(stats.bytes), 'on disk']].map(([v, l]) => (
+                <div key={String(l)} className="card-2 px-4 py-3 min-w-[96px]">
+                  <div className="text-lg font-semibold tabular">{v}</div>
+                  <div className="text-[11px] uppercase tracking-wide text-ink-3">{l}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        {!status.running && <button className="btn-primary" onClick={() => void start()}>Start recording</button>}
-        {status.running && <button className="btn-primary" onClick={() => void clipNow()}>Clip the last {settings.capture.preSeconds}s</button>}
-      </header>
+      </section>
 
-      {status.lastError && (
-        <div className="card p-4 border-bad/40 text-sm flex gap-3">
-          <AlertCircle className="text-bad shrink-0" size={18} />
-          <div><span className="font-medium">Capture problem.</span> {status.lastError}</div>
+      {(status.lastError || loopbackError || problems.length > 0) && (
+        <div className="space-y-2">
+          {status.lastError && <Problem text={status.lastError} action={{ label: 'Try again', onClick: () => void start() }} />}
+          {loopbackError && <Problem text={`System audio is not being captured: ${loopbackError}`} action={{ label: 'Audio settings', onClick: () => setPage('settings') }} />}
+          {problems.map((p) => <Problem key={p.id} text={`${p.label}: ${p.detail}`} action={p.fix ? { label: 'Fix', onClick: () => setPage(p.fix!) } : undefined} />)}
         </div>
       )}
 
       <div className="grid grid-cols-3 gap-4">
         {triggers.map((t) => (
-          <button key={t.label} onClick={() => onNavigate('rules')} className={`card p-4 text-left hover:border-accent/50 transition-colors cursor-pointer ${t.on ? '' : 'opacity-60'}`}>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${t.on ? 'bg-ok' : 'bg-muted/40'}`} />
-              <span className="font-medium text-sm">{t.label}</span>
+          <button key={t.label} onClick={() => setPage(t.page)} className={`card p-4 text-left transition-all hover:border-line-strong hover:-translate-y-px group ${t.on ? '' : 'opacity-70'}`}>
+            <div className="flex items-center gap-2.5">
+              <span className={`w-8 h-8 rounded-lg grid place-items-center ${t.on ? 'bg-accent/15 text-accent-2' : 'bg-surface-3 text-ink-3'}`}><t.icon size={16} /></span>
+              <span className="font-semibold text-sm">{t.label}</span>
+              <span className={`ml-auto w-2 h-2 rounded-full ${t.on ? 'bg-ok' : 'bg-ink-3/40'}`} />
             </div>
-            <div className="text-xs text-muted mt-1">{t.desc}</div>
+            <div className="text-xs text-ink-3 mt-2 truncate">{t.desc}</div>
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
-        <div className="col-span-3 space-y-6">
-          <Section title="Recent clips" right={<button className="btn" onClick={() => onNavigate('library')}>All clips</button>}>
+      <div className="grid grid-cols-5 gap-5">
+        <div className="col-span-3 space-y-5">
+          <Section title="Recent clips" icon={<Film size={16} />} right={<button className="btn-ghost text-sm" onClick={() => setPage('library')}>All clips <ChevronRight size={14} /></button>}>
             {recent.length === 0 ? (
-              <p className="text-sm text-muted">No clips yet. Press {settings.capture.clipHotkey} while the buffer is running.</p>
+              <p className="text-sm text-ink-3">No clips yet. Start recording and press {settings.capture.clipHotkey || 'Clip now'} when something happens.</p>
             ) : (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 {recent.map((c) => (
-                  <button key={c.id} onClick={() => onNavigate('library')} className="text-left group cursor-pointer">
-                    <div className="aspect-video rounded-lg overflow-hidden bg-panel-2 border border-line relative">
-                      <img src={fileUrl(c.thumbnail)} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                      <span className="absolute bottom-1 right-1 chip bg-black/60 border-0 text-white">{fmtDuration(c.durationSec)}</span>
+                  <button key={c.id} onClick={() => openClip(c.id)} className="text-left group">
+                    <div className="aspect-video rounded-lg overflow-hidden bg-surface-3 border border-line relative">
+                      <img src={fileUrl(c.thumbnail)} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]" loading="lazy" />
+                      <span className="absolute bottom-1 right-1 chip bg-black/70 border-0 text-white tabular">{fmtDuration(c.durationSec)}</span>
                     </div>
-                    <div className="text-sm mt-1.5 truncate">{c.title}</div>
-                    <div className="text-xs text-muted">{c.game} · {timeAgo(c.createdAt)}</div>
+                    <div className="text-[13px] font-medium mt-1.5 truncate">{c.title}</div>
+                    <div className="text-xs text-ink-3 truncate">{c.game} · {timeAgo(c.createdAt)}</div>
                   </button>
                 ))}
               </div>
             )}
           </Section>
 
-          <Section title="Live" desc={status.running ? `${status.resolution ?? ''} ${status.fps ?? ''} fps · ${status.encoder ?? ''}` : 'Buffer stopped'}>
-            <div className="space-y-2">
-              <LevelMeter label="Mic" db={status.micLevelDb} />
-              <LevelMeter label="System" db={status.systemLevelDb} />
+          <Section title="Live audio" icon={<Activity size={16} />} desc={status.running ? undefined : 'Meters move while recording.'}>
+            <div className="space-y-2.5">
+              <LevelMeter label="Mic" db={status.running ? status.micLevelDb : undefined} threshold={settings.voice.enabled && settings.voice.onMic ? settings.voice.thresholdDb : undefined} />
+              <LevelMeter label="System" db={status.running ? status.systemLevelDb : undefined} threshold={settings.voice.enabled && settings.voice.onSystemAudio ? settings.voice.thresholdDb : undefined} />
             </div>
-            {settings.vision.enabled && (
-              <div className="text-xs text-muted">
-                <Eye size={12} className="inline mr-1" />
-                Last check: {status.visionLastVerdict ?? 'waiting for frames'} {status.visionLastCheck && `· ${timeAgo(status.visionLastCheck)}`}
-              </div>
-            )}
           </Section>
         </div>
 
-        <Section title="Activity" desc="What the recorder is doing">
-          <ul className="space-y-2 max-h-[520px] overflow-y-auto pr-1 text-sm">
-            {activity.length === 0 && <li className="text-muted text-sm">Nothing yet.</li>}
-            {activity.map((ev, i) => {
+        <Section title="Activity" icon={<Activity size={16} />} className="col-span-2">
+          <ul className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1 -mr-1 text-sm">
+            {activity.length === 0 && <li className="text-ink-3 text-sm">Nothing yet.</li>}
+            {activity.slice(0, 60).map((ev, i) => {
               const Icon = kindIcon[ev.kind]
+              const tone = ev.kind === 'error' ? 'text-bad' : ev.kind === 'clip' ? 'text-ok' : ev.kind === 'vision' ? 'text-live' : ev.kind === 'game' ? 'text-accent-2' : 'text-ink-3'
               return (
-                <li key={i} className="flex gap-2">
-                  <Icon size={14} className={`mt-0.5 shrink-0 ${ev.kind === 'error' ? 'text-bad' : ev.kind === 'clip' ? 'text-ok' : ev.kind === 'vision' ? 'text-accent-2' : 'text-muted'}`} />
+                <li key={i} className="flex gap-2.5">
+                  <Icon size={14} className={`mt-1 shrink-0 ${tone}`} />
                   <div className="min-w-0">
-                    <div className="break-words">{ev.message}</div>
-                    <div className="text-[11px] text-muted">{new Date(ev.at).toLocaleTimeString()}</div>
+                    {ev.clipId ? (
+                      <button className="text-left break-words hover:text-accent-2" onClick={() => openClip(ev.clipId!)}>{ev.message}</button>
+                    ) : (
+                      <div className="break-words leading-snug">{ev.message}</div>
+                    )}
+                    <div className="text-[11px] text-ink-3 tabular">{new Date(ev.at).toLocaleTimeString()}</div>
                   </div>
                 </li>
               )
@@ -100,6 +143,16 @@ export default function Dashboard({ onNavigate }: { onNavigate: (p: 'library' | 
           </ul>
         </Section>
       </div>
+    </div>
+  )
+}
+
+function Problem({ text, action }: { text: string; action?: { label: string; onClick: () => void } }) {
+  return (
+    <div className="card p-3.5 border-bad/30 text-sm flex items-center gap-3 fade-in">
+      <AlertCircle className="text-bad shrink-0" size={18} />
+      <div className="flex-1 min-w-0 leading-snug">{text}</div>
+      {action && <button className="btn-sm" onClick={action.onClick}>{action.label}</button>}
     </div>
   )
 }
