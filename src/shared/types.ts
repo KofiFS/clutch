@@ -185,7 +185,7 @@ export interface AdCard {
 /** Shown when no cloud server is reachable, so the slot never breaks. */
 export const HOUSE_ADS: (AdCard & { placements: string[] })[] = [
   { id: 'pro-upgrade', placements: ['home', 'library'], title: 'Clutch Pro', body: '100 GB of cloud clips, share links that never expire, and no sponsored cards.', cta: 'See Pro', url: 'clutch://pro', sponsor: 'Clutch' },
-  { id: 'star-github', placements: ['home', 'library'], title: 'Clutch is open source', body: 'Star the project on GitHub, report bugs, or build a feature yourself.', cta: 'Open GitHub', url: 'https://github.com/', sponsor: 'Clutch' }
+  { id: 'star-github', placements: ['home', 'library'], title: 'Clutch is open source', body: 'Star the project on GitHub, report bugs, or build a feature yourself.', cta: 'Open GitHub', url: 'https://github.com/KofiFS/clutch', sponsor: 'Clutch' }
 ]
 
 /** Plan comparison shown in the app (the server enforces the cloud limits). */

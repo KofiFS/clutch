@@ -1,9 +1,11 @@
 {
-  "name": "clipforge",
+  "name": "clutch",
   "version": "0.1.0",
   "description": "Clutch - a smart game clip recorder: tell it what to clip, pick quality, share to Discord and YouTube.",
   "main": "./out/main/index.js",
-  "author": "iceko",
+  "author": {
+    "name": "iceko"
+  },
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
@@ -43,7 +45,6 @@
     },
     "files": [
       "out/**",
-      "resources/**",
       "package.json"
     ],
     "win": {
@@ -60,7 +61,40 @@
           "icon*.png",
           "icon.ico"
         ]
+      },
+      {
+        "from": "resources/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "*.exe",
+          "LICENSE*"
+        ]
+      },
+      {
+        "from": ".",
+        "to": ".",
+        "filter": [
+          "LICENSE",
+          "THIRD_PARTY_NOTICES.md"
+        ]
       }
-    ]
+    ],
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Clutch",
+      "artifactName": "Clutch-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": null
+  },
+  "productName": "Clutch",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/KofiFS/clutch",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KofiFS/clutch.git"
   }
 }

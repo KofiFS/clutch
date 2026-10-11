@@ -37,7 +37,7 @@ ${thumb ? `<meta property="og:image" content="${esc(thumb)}">` : ''}<meta name="
     <h1>${esc(c.title)}</h1>
     <p class="meta">${esc(c.game ?? '')}${c.game ? ' · ' : ''}${esc(c.user_name)} · ${c.views + 1} view${c.views ? 's' : ''}</p>
   </div>
-  <a class="btn" href="https://github.com/">Clip your own moments with Clutch</a>
+  <a class="btn" href="https://github.com/KofiFS/clutch">Clip your own moments with Clutch</a>
 </main>`, head)
 }
 
