@@ -1,43 +1,56 @@
 @import 'tailwindcss';
+@import '@fontsource/orbitron/500.css';
+@import '@fontsource/orbitron/700.css';
+@import '@fontsource-variable/space-grotesk';
 
-/* ---------- Design tokens: OLED dark, violet accent, cyan for "live" ---------- */
+/* =====================================================================
+   "Liquid HUD" design system
+   Liquid-glass surfaces (iOS 26 / One UI) + a restrained sci-fi HUD layer.
+   Glass needs something behind it: <Backdrop/> paints a static aurora
+   wallpaper. Static on purpose - moving content under backdrop-filter
+   forces the GPU to re-blur every frame.
+   ===================================================================== */
+
 @theme {
-  --color-bg: #07080c;
-  --color-surface-1: #0d0f15;
-  --color-surface-2: #12151d;
-  --color-surface-3: #181c26;
-  --color-surface-4: #1f2430;
-  --color-line: #222736;
-  --color-line-strong: #2d3447;
+  --color-bg: #03050b;
+  --color-surface-1: rgba(255, 255, 255, 0.045);
+  --color-surface-2: rgba(255, 255, 255, 0.06);
+  --color-surface-3: rgba(255, 255, 255, 0.085);
+  --color-surface-4: rgba(255, 255, 255, 0.12);
+  --color-line: rgba(170, 225, 255, 0.12);
+  --color-line-strong: rgba(170, 225, 255, 0.24);
 
-  --color-ink: #eef0f6;
-  --color-ink-2: #aab2c5;
-  --color-ink-3: #6f788d;
+  --color-ink: #f2f7ff;
+  --color-ink-2: #b4c3d9;
+  --color-ink-3: #7d8ba3;
 
-  --color-accent: #8b6cff;
-  --color-accent-2: #a78bfa;
-  --color-live: #22d3ee;
-  --color-ok: #34d399;
-  --color-warn: #fbbf24;
-  --color-bad: #fb7185;
+  --color-accent: #4fe3ff;
+  --color-accent-2: #9ff0ff;
+  --color-violet: #9b7bff;
+  --color-live: #4fe3ff;
+  --color-ok: #4ef2b0;
+  --color-warn: #ffc857;
+  --color-bad: #ff6b8b;
 
-  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', system-ui, sans-serif;
-  --font-display: 'Segoe UI Variable Display', 'Segoe UI', 'Inter', system-ui, sans-serif;
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --font-hud: 'Orbitron', 'Space Grotesk Variable', sans-serif;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
 
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px -12px rgba(0, 0, 0, 0.6);
-  --shadow-pop: 0 24px 60px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --shadow-glow: 0 0 0 1px rgba(139, 108, 255, 0.35), 0 8px 30px -8px rgba(139, 108, 255, 0.55);
+  --glass-blur: 26px;
+  --shadow-card: 0 24px 60px -30px rgba(0, 0, 0, 0.9);
+  --shadow-pop: 0 40px 90px -30px rgba(0, 0, 0, 0.95);
+  --shadow-glow: 0 0 0 1px rgba(79, 227, 255, 0.4), 0 10px 40px -10px rgba(79, 227, 255, 0.55);
 
   --ease-out: cubic-bezier(0.2, 0.9, 0.3, 1);
-  --ease-spring: cubic-bezier(0.2, 1.1, 0.3, 1.15);
+  --ease-spring: cubic-bezier(0.25, 1.25, 0.35, 1);
 }
 
-/* legacy aliases used by older components */
+/* aliases kept for older class names */
 @theme inline {
   --color-panel: var(--color-surface-1);
   --color-panel-2: var(--color-surface-2);
@@ -45,8 +58,9 @@
 }
 
 html, body, #root { height: 100%; }
+html { background: var(--color-bg); }
+html[data-window-glass='on'], html[data-window-glass='on'] body { background: transparent; }
 body {
-  background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
   font-size: 14px;
@@ -56,18 +70,18 @@ body {
   user-select: none;
 }
 input, textarea, [contenteditable] { user-select: text; }
-h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; }
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.015em; }
 .tabular { font-variant-numeric: tabular-nums; }
-* { scrollbar-width: thin; scrollbar-color: #2a3040 transparent; }
+.font-hud { font-family: var(--font-hud); letter-spacing: 0.06em; }
+* { scrollbar-width: thin; scrollbar-color: rgba(160, 220, 255, 0.18) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #262c3a; border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background: #343c4e; background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-thumb { background: rgba(160, 220, 255, 0.16); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(160, 220, 255, 0.28); background-clip: padding-box; border: 3px solid transparent; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 6px; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 10px; }
 button, [role='button'], select, summary { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
-
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
 
@@ -75,92 +89,195 @@ button:disabled { cursor: not-allowed; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
-/* ---------- Utilities ---------- */
-@utility card { @apply bg-surface-1 border border-line rounded-[var(--radius-lg)] shadow-[var(--shadow-card)]; }
-@utility card-2 { @apply bg-surface-2 border border-line rounded-[var(--radius-md)]; }
-@utility label { @apply block text-[11px] font-semibold text-ink-3 uppercase tracking-[0.08em] mb-1.5; }
-@utility chip { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-surface-3 border border-line text-ink-2 leading-5; }
-@utility kbd { @apply inline-flex items-center justify-center min-w-6 h-6 px-1.5 rounded-md text-[11px] font-semibold bg-surface-3 border border-line-strong text-ink-2 shadow-[0_1px_0_#000]; }
+/* ---------------- Liquid glass ---------------- */
+
+/* Base glass surface. ::before draws the light-catching rim (bright top-left, cyan bottom-right). */
+@utility glass {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.035) 38%, rgba(255, 255, 255, 0.02) 62%, rgba(120, 220, 255, 0.05) 100%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(165%) brightness(1.04);
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0.5px rgba(255, 255, 255, 0.06),
+    inset 0 0 24px rgba(255, 255, 255, 0.025),
+    var(--shadow-card);
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.1) 26%, rgba(255, 255, 255, 0.02) 52%, rgba(120, 225, 255, 0.28) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+@utility card { @apply glass rounded-[var(--radius-lg)]; }
+@utility card-2 {
+  @apply glass rounded-[var(--radius-md)];
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025));
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.28), inset 0 0 16px rgba(255, 255, 255, 0.02);
+}
+
+/* HUD corner ticks + a faint scan line along the top edge. Uses ::after so it stacks with the glass rim. */
+@utility hud {
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 9px;
+    pointer-events: none;
+    z-index: 1;
+    --t: rgba(79, 227, 255, 0.75);
+    background:
+      linear-gradient(var(--t), var(--t)) left top / 12px 1.5px no-repeat,
+      linear-gradient(var(--t), var(--t)) left top / 1.5px 12px no-repeat,
+      linear-gradient(var(--t), var(--t)) right top / 12px 1.5px no-repeat,
+      linear-gradient(var(--t), var(--t)) right top / 1.5px 12px no-repeat,
+      linear-gradient(var(--t), var(--t)) left bottom / 12px 1.5px no-repeat,
+      linear-gradient(var(--t), var(--t)) left bottom / 1.5px 12px no-repeat,
+      linear-gradient(var(--t), var(--t)) right bottom / 12px 1.5px no-repeat,
+      linear-gradient(var(--t), var(--t)) right bottom / 1.5px 12px no-repeat,
+      linear-gradient(90deg, transparent, rgba(79, 227, 255, 0.35) 30%, rgba(155, 123, 255, 0.35) 70%, transparent) center top -9px / 60% 1px no-repeat;
+    opacity: 0.8;
+  }
+}
+
+/* Small "lens" elements bend what's behind them (Chromium supports SVG filters in backdrop-filter). */
+@utility liquid {
+  backdrop-filter: blur(10px) url(#cf-liquid) saturate(180%) brightness(1.08);
+}
+
+@utility label { @apply block font-hud text-[10px] font-medium text-ink-3 uppercase tracking-[0.16em] mb-2; }
+@utility chip {
+  @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs text-ink-2 leading-5;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+}
+@utility kbd {
+  @apply inline-flex items-center justify-center min-w-6 h-6 px-1.5 rounded-lg font-hud text-[10px] font-medium text-ink-2;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 0 rgba(0, 0, 0, 0.5);
+}
 
 @utility input {
-  @apply w-full bg-surface-2 border border-line rounded-[var(--radius-sm)] px-3 h-10 text-sm text-ink placeholder:text-ink-3/70 transition-colors;
-  &:hover { border-color: var(--color-line-strong); }
-  &:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 25%, transparent); }
+  @apply w-full rounded-[var(--radius-sm)] px-3.5 h-10 text-sm text-ink placeholder:text-ink-3/80 transition-[border-color,box-shadow,background-color] duration-200;
+  background: rgba(0, 8, 20, 0.35);
+  border: 1px solid rgba(170, 225, 255, 0.14);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  &:hover { border-color: rgba(170, 225, 255, 0.26); }
+  &:focus { outline: none; border-color: rgba(79, 227, 255, 0.7); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(79, 227, 255, 0.18), 0 0 18px -4px rgba(79, 227, 255, 0.6); }
 }
 @utility textarea { @apply input h-auto py-2.5 leading-relaxed resize-y; }
 
+/* Pill buttons made of glass. */
 @utility btn {
-  @apply inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-[var(--radius-sm)] text-sm font-medium bg-surface-3 border border-line text-ink transition-[background-color,border-color,transform,box-shadow] duration-150 select-none;
-  &:hover { background: var(--color-surface-4); border-color: var(--color-line-strong); }
-  &:active { transform: translateY(1px); }
-  &:disabled { opacity: 0.45; pointer-events: none; }
+  @apply relative inline-flex items-center justify-center gap-2 h-10 px-4 rounded-full text-sm font-medium text-ink select-none transition-[background-color,box-shadow,transform,color] duration-200;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 6px 18px -10px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(14px) saturate(160%);
+  &:hover { background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08)); }
+  &:active { transform: scale(0.97); }
+  &:disabled { opacity: 0.42; pointer-events: none; }
 }
-@utility btn-sm { @apply btn h-8 px-2.5 text-xs; }
+@utility btn-sm { @apply btn h-8 px-3 text-xs; }
 @utility btn-primary {
-  @apply btn text-white border-transparent;
-  background: linear-gradient(135deg, var(--color-accent), #6d4df0);
-  box-shadow: var(--shadow-glow);
-  &:hover { background: linear-gradient(135deg, #9b80ff, #7b5cf5); border-color: transparent; }
+  @apply btn text-[#00121a] font-semibold;
+  background: linear-gradient(180deg, #8ff1ff 0%, #4fe3ff 45%, #2bb8ff 100%);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.85), inset 0 -2px 6px rgba(0, 60, 110, 0.35), 0 10px 34px -10px rgba(79, 227, 255, 0.85);
+  &:hover { background: linear-gradient(180deg, #a8f5ff 0%, #66e8ff 45%, #3cc2ff 100%); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), inset 0 -2px 6px rgba(0, 60, 110, 0.3), 0 12px 40px -8px rgba(79, 227, 255, 1); }
 }
 @utility btn-live {
-  @apply btn text-black border-transparent font-semibold;
-  background: linear-gradient(135deg, #5eead4, var(--color-live));
-  &:hover { background: linear-gradient(135deg, #7ff0dd, #4ddff5); border-color: transparent; }
+  @apply btn text-white font-semibold;
+  background: linear-gradient(180deg, rgba(155, 123, 255, 0.95), rgba(79, 160, 255, 0.95));
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.7), inset 0 -2px 6px rgba(20, 0, 80, 0.35), 0 10px 34px -10px rgba(155, 123, 255, 0.95);
+  &:hover { background: linear-gradient(180deg, rgba(170, 142, 255, 1), rgba(98, 175, 255, 1)); }
 }
-@utility btn-ghost { @apply btn bg-transparent border-transparent text-ink-2; &:hover { background: var(--color-surface-3); color: var(--color-ink); border-color: transparent; } }
-@utility btn-danger { @apply btn; &:hover { border-color: color-mix(in oklab, var(--color-bad) 60%, transparent); color: var(--color-bad); } }
+@utility btn-ghost {
+  @apply btn text-ink-2;
+  background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none;
+  &:hover { background: rgba(255, 255, 255, 0.08); color: var(--color-ink); }
+}
+@utility btn-danger { @apply btn; &:hover { color: var(--color-bad); border-color: rgba(255, 107, 139, 0.5); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), 0 0 20px -6px rgba(255, 107, 139, 0.6); } }
 @utility btn-icon { @apply btn w-10 px-0; }
 
 @utility pulse-dot {
   position: relative;
-  &::after { content: ''; position: absolute; inset: -4px; border-radius: 9999px; border: 2px solid currentColor; opacity: 0; animation: ring 1.8s ease-out infinite; }
+  /* Pulses 3 times when it appears, then holds a steady glow. An infinite animation inside a
+     backdrop-filtered panel makes the GPU re-blur that panel every frame (~1 core); this costs ~0. */
+  box-shadow: 0 0 8px currentColor;
+  &::after { content: ''; position: absolute; inset: -4px; border-radius: 9999px; border: 2px solid currentColor; opacity: 0; animation: ring 2.2s ease-out 3; }
 }
-@keyframes ring { 0% { transform: scale(0.6); opacity: 0.8; } 100% { transform: scale(1.6); opacity: 0; } }
+@keyframes ring { 0% { transform: scale(0.6); opacity: 0.8; } 100% { transform: scale(1.7); opacity: 0; } }
 
-@utility fade-in { animation: fadeIn 0.2s var(--ease-out) both; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@utility pop-in { animation: popIn 0.22s var(--ease-spring) both; }
-@keyframes popIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: none; } }
+@utility fade-in { animation: fadeIn 0.28s var(--ease-out) both; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+@utility pop-in { animation: popIn 0.34s var(--ease-spring) both; }
+@keyframes popIn { from { opacity: 0; transform: scale(0.94) translateY(10px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
 @utility shimmer {
-  background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-surface-3) 50%, var(--color-surface-2) 75%);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.04) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@utility glow-text { text-shadow: 0 0 18px rgba(79, 227, 255, 0.55); }
 
-/* ---------- Native controls, restyled ---------- */
+/* ---------------- Native controls, restyled ---------------- */
 select.input, select.select {
   appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f788d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237d8ba3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
   background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 34px;
+  background-position: right 12px center;
+  padding-right: 36px;
 }
-select option, select optgroup { background: #12151d; color: #eef0f6; }
+select option, select optgroup { background: #0b1220; color: #f2f7ff; }
 
-input[type='range'].slider {
-  appearance: none; width: 100%; height: 28px; background: transparent; margin: 0;
-  --pct: 50%;
-}
+input[type='range'].slider { appearance: none; width: 100%; height: 28px; background: transparent; margin: 0; --pct: 50%; }
 input[type='range'].slider::-webkit-slider-runnable-track {
   height: 6px; border-radius: 999px;
-  background: linear-gradient(90deg, var(--color-accent) var(--pct), var(--color-surface-4) var(--pct));
+  background: linear-gradient(90deg, var(--color-violet), var(--color-accent) var(--pct), rgba(255, 255, 255, 0.1) var(--pct));
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4);
 }
 input[type='range'].slider::-webkit-slider-thumb {
-  appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 999px;
-  background: #fff; border: 3px solid var(--color-accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  transition: transform 0.15s var(--ease-out);
+  appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #fff, #dff8ff 40%, #b6ecff 100%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 0 4px rgba(79, 227, 255, 0.18), 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 16px rgba(79, 227, 255, 0.6);
+  transition: transform 0.2s var(--ease-spring);
 }
-input[type='range'].slider:hover::-webkit-slider-thumb, input[type='range'].slider:active::-webkit-slider-thumb { transform: scale(1.12); }
+input[type='range'].slider:hover::-webkit-slider-thumb, input[type='range'].slider:active::-webkit-slider-thumb { transform: scale(1.15); }
 input[type='range'].slider:focus-visible { outline: none; }
-input[type='range'].slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-accent) 30%, transparent); }
 
 input[type='checkbox'].check {
-  appearance: none; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--color-line-strong); background: var(--color-surface-2);
+  appearance: none; width: 18px; height: 18px; border-radius: 6px; border: 1.5px solid rgba(255, 255, 255, 0.3); background: rgba(0, 0, 0, 0.3);
   display: inline-grid; place-items: center; transition: all 0.15s;
 }
-input[type='checkbox'].check:checked { background: var(--color-accent); border-color: var(--color-accent); }
-input[type='checkbox'].check:checked::after { content: ''; width: 10px; height: 6px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: translateY(-1px) rotate(-45deg); }
+input[type='checkbox'].check:checked { background: var(--color-accent); border-color: var(--color-accent); box-shadow: 0 0 12px rgba(79, 227, 255, 0.7); }
+input[type='checkbox'].check:checked::after { content: ''; width: 10px; height: 6px; border-left: 2px solid #00121a; border-bottom: 2px solid #00121a; transform: translateY(-1px) rotate(-45deg); }
 
-video::-webkit-media-controls-panel { background: linear-gradient(transparent, rgba(0, 0, 0, 0.6)); }
+/* ---------------- Lite effects (weaker PCs / battery) ---------------- */
+html[data-fx='lite'] .glass,
+html[data-fx='lite'] .card,
+html[data-fx='lite'] .card-2,
+html[data-fx='lite'] .btn,
+html[data-fx='lite'] .chip,
+html[data-fx='lite'] .liquid { backdrop-filter: none !important; }
+html[data-fx='lite'] .card, html[data-fx='lite'] .glass { background: rgba(14, 20, 34, 0.94); }
+html[data-fx='lite'] .card-2 { background: rgba(20, 27, 44, 0.94); }
+html[data-fx='lite'] .hud::after { display: none; }
+html[data-fx='lite'] .pulse-dot::after { animation: none; }
+
+/* ---------------- See-through window (Windows 11 acrylic) ---------------- */
+/* The OS already frosts the desktop behind the window; thin our wallpaper so it shows through. */
+html[data-window-glass='on'] .cf-base { opacity: 0.45; }
+html[data-window-glass='on'] .cf-aurora { opacity: 0.35 !important; }

@@ -7,6 +7,8 @@ export interface TrayActions {
   clipNow: () => void
   quit: () => void
   isRunning: () => boolean
+  lengths: () => { options: number[]; current: number }
+  setLength: (seconds: number) => void
 }
 
 export function iconPath(size: 32 | 256 = 256): string {
@@ -26,16 +28,25 @@ export class AppTray {
     this.refresh()
   }
 
+  private last: { running: boolean; game?: string } | undefined
+
   refresh(status?: { running: boolean; game?: string }) {
-    const running = status?.running ?? this.actions.isRunning()
-    this.tray.setToolTip(running ? `ClipForge - recording ${status?.game ?? ''}`.trim() : 'ClipForge - idle')
+    if (status) this.last = status
+    const running = status?.running ?? this.last?.running ?? this.actions.isRunning()
+    const game = status?.game ?? this.last?.game
+    const { options, current } = this.actions.lengths()
+    this.tray.setToolTip(running ? `ClipForge - recording ${game ?? ''}`.trim() : 'ClipForge - idle')
     this.tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: running ? `Recording ${status?.game ?? ''}`.trim() : 'Not recording', enabled: false },
+        { label: running ? `Recording ${game ?? ''}`.trim() : 'Not recording', enabled: false },
         { type: 'separator' },
         { label: 'Open ClipForge', click: () => this.actions.show() },
         { label: running ? 'Stop recording' : 'Start recording', click: () => this.actions.startStop() },
         { label: 'Clip now', enabled: running, click: () => this.actions.clipNow() },
+        {
+          label: `Clip length (${current}s)`,
+          submenu: options.map((n) => ({ label: n >= 60 && n % 60 === 0 ? `${n / 60} min` : `${n} seconds`, type: 'radio' as const, checked: n === current, click: () => this.actions.setLength(n) }))
+        },
         { type: 'separator' },
         { label: 'Quit', click: () => this.actions.quit() }
       ])

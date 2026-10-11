@@ -14,6 +14,8 @@ A Medal-style game clip recorder for Windows that you can *tell what to clip*.
 - **Clip viewer / editor**: timeline trim with draggable handles, keyboard shortcuts, per-clip share panel.
 - **YouTube uploads** (your own OAuth app) now or scheduled, plus a daily schedule that drip-feeds your favorite clips.
 - **Desktop polish**: first-run wizard, system tray, on-screen "Clipped!" overlay, chime, health check, frameless window.
+- **Change clip length in game**: Alt+PageUp / Alt+PageDown step through 10 s, 20 s, 30 s, 1 min, 2 min with an on-screen confirmation, extra clip hotkeys can each have their own length (e.g. Shift+F8 = 1 min), and the tray has a Clip length menu.
+- **Liquid HUD design**: liquid-glass panels (iOS 26 / One UI style) with a light sci-fi HUD layer, optional Windows 11 acrylic see-through window, and a Lite mode with no blur.
 
 ## Requirements
 
@@ -46,8 +48,9 @@ Measured on this PC (RTX 5090, 5120x1440 @ 60 fps, HEVC NVENC, window hidden in 
 |---|---|---|
 | FFmpeg (capture + encode) | ~3% | ~190 MB |
 | ClipForge (Electron, hidden) | ~1.6% | ~650 MB |
+| ClipForge window open while recording (Liquid glass) | ~5% GPU process + ~5% window | |
 
-Frames stay on the GPU from capture to encoder. Game detection uses one long-lived PowerShell helper instead of spawning a process every few seconds. The visible window costs more (~17% of one core) because of live meters and animations; while gaming it lives in the tray.
+Frames stay on the GPU from capture to encoder. Game detection uses one long-lived PowerShell helper instead of spawning a process every few seconds. Nothing animates forever inside a glass panel: an infinite animation under backdrop-filter made the GPU re-blur the panel every frame (about one full core), so status dots pulse three times and then hold a steady glow. The wallpaper behind the glass is static for the same reason.
 
 ## Clip of the day scoring
 

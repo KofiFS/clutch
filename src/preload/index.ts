@@ -34,7 +34,8 @@ const api = {
     openExternal: (url: string) => ipcRenderer.invoke('system:openExternal', url),
     health: (): Promise<HealthItem[]> => ipcRenderer.invoke('system:health'),
     testHotkey: (accel: string): Promise<boolean> => ipcRenderer.invoke('system:testHotkey', accel),
-    testOverlay: () => ipcRenderer.invoke('system:testOverlay')
+    testOverlay: () => ipcRenderer.invoke('system:testOverlay'),
+    canAcrylic: (): Promise<boolean> => ipcRenderer.invoke('system:canAcrylic')
   },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),

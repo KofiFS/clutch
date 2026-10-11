@@ -193,7 +193,8 @@ export default function Library() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 card-2 bg-surface-2/95 backdrop-blur shadow-[var(--shadow-pop)] px-3 py-2 flex items-center gap-2 pop-in">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pop-in">
+        <div className="card-2 hud shadow-[var(--shadow-pop)] px-3 py-2 flex items-center gap-2 rounded-full">
           <span className="text-sm font-medium px-2 flex items-center gap-2"><CheckSquare size={15} className="text-accent-2" /> {selected.size} selected</span>
           <span className="w-px h-6 bg-line" />
           {view === 'clips' ? (
@@ -216,6 +217,7 @@ export default function Library() {
             </>
           )}
           <button className="btn-ghost h-8 w-8 px-0" onClick={() => setSelected(new Set())} aria-label="Clear selection"><X size={14} /></button>
+        </div>
         </div>
       )}
       {confirmDialog}

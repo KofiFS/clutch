@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, Clapperboard, Eye, Gamepad2, Mic, UploadCloud, Zap, Film, ChevronRight, Activity, Flame, MessageSquare, Trophy, Send, Loader2 } from 'lucide-react'
 import type { Clip, HealthItem } from '../../../shared/types'
 import { fileUrl, fmtBytes, fmtDuration, timeAgo, useStore } from '../lib/store'
-import { GameIcon, LevelMeter, Section, Badge, Kbd } from '../components/ui'
+import { GameIcon, LevelMeter, Section, Badge, Kbd, RingGauge, IconOrb } from '../components/ui'
 import { useToast } from '../components/Toasts'
 
 export default function Dashboard() {
@@ -33,12 +33,20 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Hero */}
-      <section className={`card relative overflow-hidden p-6 ${status.running ? 'border-live/30' : ''}`}>
-        <div className="absolute inset-0 pointer-events-none" style={{ background: status.running ? 'radial-gradient(600px 200px at 10% 0%, rgba(34,211,238,0.12), transparent)' : 'radial-gradient(600px 200px at 10% 0%, rgba(139,108,255,0.14), transparent)' }} />
-        <div className="relative flex items-center gap-6">
+      <section className="card hud relative overflow-hidden p-7">
+        <div className="absolute inset-0 pointer-events-none" style={{ background: status.running ? 'radial-gradient(700px 260px at 12% 0%, rgba(79,227,255,0.16), transparent)' : 'radial-gradient(700px 260px at 12% 0%, rgba(155,123,255,0.16), transparent)' }} />
+        <div className="relative z-[2] flex items-center gap-8">
+          <RingGauge
+            value={status.running ? Math.min(status.bufferedSeconds ?? 0, settings.capture.bufferSeconds) : 0}
+            max={settings.capture.bufferSeconds}
+            size={150}
+            tone={status.running ? 'cyan' : 'violet'}
+            label={status.running ? `${Math.min(status.bufferedSeconds ?? 0, settings.capture.bufferSeconds)}s` : '--'}
+            sub={status.running ? `of ${settings.capture.bufferSeconds}s ready` : 'standby'}
+          />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              {status.running ? <Badge tone="live"><span className="w-1.5 h-1.5 rounded-full bg-live pulse-dot" /> Recording</Badge> : <Badge>Idle</Badge>}
+            <div className="flex items-center gap-2.5 mb-3">
+              {status.running ? <Badge tone="live"><span className="w-1.5 h-1.5 rounded-full bg-live pulse-dot" /> Recording</Badge> : <Badge>Standby</Badge>}
               {game && (
                 <span className="flex items-center gap-1.5 text-sm text-ink-2 min-w-0">
                   <GameIcon src={game.icon ? fileUrl(game.icon) : undefined} name={game.name} size={18} />
@@ -46,29 +54,29 @@ export default function Dashboard() {
                 </span>
               )}
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {status.running ? `The last ${Math.min(status.bufferedSeconds ?? 0, settings.capture.bufferSeconds)} seconds are ready to clip.` : settings.app.autoStart === 'games' ? 'Open a game and recording starts by itself.' : 'Start recording, then clip the moments that matter.'}
+            <h1 className="text-[28px] leading-tight font-semibold tracking-tight">
+              {status.running ? 'Ready to clip.' : settings.app.autoStart === 'games' ? 'Open a game. Recording starts by itself.' : 'Start recording, then clip what matters.'}
             </h1>
-            <p className="text-ink-2 mt-1.5 text-sm">
+            <p className="text-ink-2 mt-2 text-sm font-hud tracking-[0.06em] text-[12px]">
               {status.running
-                ? `${status.resolution} at ${status.fps} fps · ${status.encoder} · keeping ${settings.capture.bufferSeconds}s`
-                : status.lastError ? 'The last recording stopped with an error. Details below.' : `Hotkey ${settings.capture.clipHotkey || 'not set'} saves the previous ${settings.capture.preSeconds}s plus ${settings.capture.postSeconds}s after.`}
+                ? `${status.resolution} · ${status.fps} FPS · ${String(status.encoder ?? '').toUpperCase()}`
+                : status.lastError ? 'The last recording stopped with an error. Details below.' : `HOTKEY ${settings.capture.clipHotkey || 'NOT SET'} · ${settings.capture.preSeconds}S BACK + ${settings.capture.postSeconds}S`}
             </p>
-            <div className="flex items-center gap-2 mt-5">
+            <div className="flex items-center gap-2.5 mt-6">
               {status.running ? (
-                <button className="btn-live px-5" onClick={() => void clipNow()}><Zap size={16} /> Clip the last {settings.capture.preSeconds}s {settings.capture.clipHotkey && <Kbd>{settings.capture.clipHotkey}</Kbd>}</button>
+                <button className="btn-live px-6 h-11" onClick={() => void clipNow()}><Zap size={16} /> Clip the last {settings.capture.preSeconds}s {settings.capture.clipHotkey && <Kbd>{settings.capture.clipHotkey}</Kbd>}</button>
               ) : (
-                <button className="btn-primary px-5" disabled={status.starting} onClick={() => void start()}>{status.starting ? 'Starting…' : 'Start recording'}</button>
+                <button className="btn-primary px-6 h-11" disabled={status.starting} onClick={() => void start()}>{status.starting ? 'Starting…' : 'Start recording'}</button>
               )}
-              <button className="btn" onClick={() => setPage('rules')}>What to clip</button>
+              <button className="btn h-11 px-5" onClick={() => setPage('rules')}>What to clip</button>
             </div>
           </div>
           {stats && (
-            <div className="hidden lg:grid grid-cols-3 gap-3 text-center shrink-0">
-              {[[stats.count, 'clips'], [fmtDuration(stats.seconds), 'recorded'], [fmtBytes(stats.bytes), 'on disk']].map(([v, l]) => (
-                <div key={String(l)} className="card-2 px-4 py-3 min-w-[96px]">
-                  <div className="text-lg font-semibold tabular">{v}</div>
-                  <div className="text-[11px] uppercase tracking-wide text-ink-3">{l}</div>
+            <div className="hidden xl:flex flex-col gap-2.5 shrink-0">
+              {[[stats.count, 'Clips'], [fmtDuration(stats.seconds), 'Recorded'], [fmtBytes(stats.bytes), 'On disk']].map(([v, l]) => (
+                <div key={String(l)} className="card-2 px-4 py-2.5 min-w-[150px] flex items-baseline justify-between gap-4">
+                  <div className="font-hud text-[9px] uppercase tracking-[0.18em] text-ink-3">{l}</div>
+                  <div className="font-hud text-[15px] font-bold tabular">{v}</div>
                 </div>
               ))}
             </div>
@@ -86,25 +94,25 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-4 gap-4">
         {triggers.map((t) => (
-          <button key={t.label} onClick={() => setPage(t.page)} className={`card p-4 text-left transition-all hover:border-line-strong hover:-translate-y-px group ${t.on ? '' : 'opacity-70'}`}>
-            <div className="flex items-center gap-2.5">
-              <span className={`w-8 h-8 rounded-lg grid place-items-center ${t.on ? 'bg-accent/15 text-accent-2' : 'bg-surface-3 text-ink-3'}`}><t.icon size={16} /></span>
+          <button key={t.label} onClick={() => setPage(t.page)} className={`card p-4 text-left transition-transform duration-200 hover:-translate-y-0.5 group ${t.on ? '' : 'opacity-70'}`}>
+            <div className="relative z-[2] flex items-center gap-2.5">
+              <IconOrb size={32} tone={t.on ? 'cyan' : 'neutral'}><t.icon size={15} /></IconOrb>
               <span className="font-semibold text-sm">{t.label}</span>
-              <span className={`ml-auto w-2 h-2 rounded-full ${t.on ? 'bg-ok' : 'bg-ink-3/40'}`} />
+              <span className={`ml-auto w-2 h-2 rounded-full ${t.on ? 'bg-ok shadow-[0_0_8px_#4ef2b0]' : 'bg-ink-3/40'}`} />
             </div>
-            <div className="text-xs text-ink-3 mt-2 truncate">{t.desc}</div>
+            <div className="relative z-[2] text-xs text-ink-3 mt-2.5 truncate">{t.desc}</div>
           </button>
         ))}
       </div>
 
       {best && (
-        <section className="card overflow-hidden flex fade-in">
+        <section className="card hud overflow-hidden flex fade-in">
           <button className="w-[300px] shrink-0 aspect-video bg-surface-3 relative group" onClick={() => openClip(best.clip.id)} aria-label={`Watch ${best.clip.title}`}>
             <img src={fileUrl(best.clip.thumbnail)} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
             <span className="absolute bottom-2 right-2 chip bg-black/70 border-0 text-white tabular">{fmtDuration(best.clip.durationSec)}</span>
           </button>
-          <div className="flex-1 min-w-0 p-5 flex flex-col">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-warn"><Trophy size={14} /> Clip of the day</div>
+          <div className="relative z-[2] flex-1 min-w-0 p-6 flex flex-col">
+            <div className="flex items-center gap-2 font-hud text-[10px] font-medium uppercase tracking-[0.18em] text-warn drop-shadow-[0_0_8px_rgba(255,200,87,0.6)]"><Trophy size={14} /> Clip of the day</div>
             <div className="text-lg font-semibold mt-1.5 truncate">{best.clip.title}</div>
             <div className="text-sm text-ink-3 flex items-center gap-1.5 mt-0.5 min-w-0">
               <GameIcon src={best.clip.gameIcon ? fileUrl(best.clip.gameIcon) : undefined} name={best.clip.game} size={16} />
@@ -186,7 +194,7 @@ export default function Dashboard() {
 
 function Problem({ text, action }: { text: string; action?: { label: string; onClick: () => void } }) {
   return (
-    <div className="card p-3.5 border-bad/30 text-sm flex items-center gap-3 fade-in">
+    <div className="card p-3.5 text-sm flex items-center gap-3 fade-in" style={{ boxShadow: "0 0 30px -12px rgba(255,107,139,0.8)" }}>
       <AlertCircle className="text-bad shrink-0" size={18} />
       <div className="flex-1 min-w-0 leading-snug">{text}</div>
       {action && <button className="btn-sm" onClick={action.onClick}>{action.label}</button>}

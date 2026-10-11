@@ -3,7 +3,7 @@ import { Keyboard } from 'lucide-react'
 import { Kbd } from './ui'
 
 /** Press-to-record hotkey field that produces an Electron accelerator string. */
-export function HotkeyInput({ value, onChange, status }: { value: string; onChange: (accel: string) => void; status?: 'ok' | 'conflict' | 'unknown' }) {
+export function HotkeyInput({ value, onChange, status, compact = false }: { value: string; onChange: (accel: string) => void; status?: 'ok' | 'conflict' | 'unknown'; compact?: boolean }) {
   const [listening, setListening] = useState(false)
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -34,10 +34,10 @@ export function HotkeyInput({ value, onChange, status }: { value: string; onChan
 
   const parts = value ? value.split('+') : []
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 min-w-0">
       <button
         type="button"
-        className={`input flex items-center gap-2 cursor-pointer ${listening ? 'border-accent shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-accent)_25%,transparent)]' : ''}`}
+        className={`input min-w-0 flex items-center gap-2 cursor-pointer ${listening ? 'border-accent shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-accent)_25%,transparent)]' : ''}`}
         onClick={() => setListening(true)}
         onBlur={() => setListening(false)}
         onKeyDown={onKeyDown}
@@ -51,10 +51,11 @@ export function HotkeyInput({ value, onChange, status }: { value: string; onChan
         ) : (
           <span className="text-ink-3 text-sm">Click to set</span>
         )}
-        {status === 'ok' && !listening && <span className="ml-auto text-xs text-ok">Ready</span>}
-        {status === 'conflict' && !listening && <span className="ml-auto text-xs text-bad">In use by another app</span>}
+        {!compact && status === 'ok' && !listening && <span className="ml-auto text-xs text-ok">Ready</span>}
+        {!compact && status === 'conflict' && !listening && <span className="ml-auto text-xs text-bad">In use by another app</span>}
+        {compact && status && status !== 'unknown' && !listening && <span title={status === 'ok' ? 'Ready' : 'In use by another app'} className={`ml-auto w-2 h-2 rounded-full shrink-0 ${status === 'ok' ? 'bg-ok shadow-[0_0_6px_#4ef2b0]' : 'bg-bad shadow-[0_0_6px_#ff6b8b]'}`} />}
       </button>
-      {value && <button className="btn" onClick={() => onChange('')} type="button">Clear</button>}
+      {value && !compact && <button className="btn" onClick={() => onChange('')} type="button">Clear</button>}
     </div>
   )
 }

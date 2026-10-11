@@ -246,10 +246,42 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   }
 
   /** Hotkey / manual: clip the last `preSeconds` plus the next `postSeconds`. */
-  async clipNow(trigger: TriggerSource = 'hotkey') {
+  async clipNow(trigger: TriggerSource = 'hotkey', seconds?: number) {
     const c = this.effectiveCapture()
     const now = Date.now()
-    return this.clipRange(now - c.preSeconds * 1000, now + c.postSeconds * 1000, trigger)
+    const back = Math.min(seconds ?? c.preSeconds, c.bufferSeconds)
+    return this.clipRange(now - back * 1000, now + c.postSeconds * 1000, trigger)
+  }
+
+  /** Length presets that fit in the current buffer, ascending. */
+  lengthOptions(): number[] {
+    const s = this.settings.get()
+    const max = this.effectiveCapture().bufferSeconds
+    const list = [...new Set(s.capture.lengthPresets)].filter((n) => n > 0 && n <= max).sort((a, b) => a - b)
+    return list.length ? list : [Math.min(max, this.effectiveCapture().preSeconds)]
+  }
+
+  /** Set how far back the main clip hotkey reaches. Writes to the game's profile if it overrides it. */
+  setClipLength(seconds: number) {
+    const s = this.settings.get()
+    const profile = s.profiles[this.game.process]
+    if (profile && profile.preSeconds !== undefined) {
+      this.settings.set({ profiles: { ...s.profiles, [this.game.process]: { ...profile, preSeconds: seconds } } })
+    } else {
+      this.settings.set({ capture: { ...s.capture, preSeconds: seconds } })
+    }
+    this.log('info', `Clip length set to ${seconds}s`)
+  }
+
+  /** In-game length hotkeys: step through the presets. */
+  stepClipLength(dir: 1 | -1): { seconds: number; edge: 'min' | 'max' | null } {
+    const opts = this.lengthOptions()
+    const cur = this.effectiveCapture().preSeconds
+    let next: number
+    if (dir > 0) next = opts.find((n) => n > cur) ?? opts[opts.length - 1]
+    else next = [...opts].reverse().find((n) => n < cur) ?? opts[0]
+    if (next !== cur) this.setClipLength(next)
+    return { seconds: next, edge: next === opts[opts.length - 1] && dir > 0 ? 'max' : next === opts[0] && dir < 0 ? 'min' : null }
   }
 
   async clipRange(startMs: number, endMs: number, trigger: TriggerSource, meta: { event?: string; title?: string; hypeDb?: number } = {}) {

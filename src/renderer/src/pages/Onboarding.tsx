@@ -17,7 +17,7 @@ export default function Onboarding() {
   const finish = () => void save({ app: { ...settings.app, onboarded: true } })
 
   return (
-    <div className="h-full flex flex-col bg-bg">
+    <div className="h-full flex flex-col">
       <div className="drag h-10 shrink-0" />
       <div className="flex-1 grid place-items-center p-8">
         <div className="w-full max-w-[720px]">

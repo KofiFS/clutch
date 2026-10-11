@@ -24,10 +24,16 @@ let scheduler: UploadScheduler
 let tray: AppTray | null = null
 let overlay: OverlayToast | null = null
 let registeredHotkey = ''
+const registeredKeys = new Set<string>()
+let hotkeySignature = ''
 let digest: DailyDigest | null = null
 let quitting = false
+let currentMaterial: 'acrylic' | 'none' = 'none'
 
-const TITLEBAR = { color: '#0d0f15', symbolColor: '#aab2c5', height: 40 }
+const TITLEBAR = { color: '#00000000', symbolColor: '#b4c3d9', height: 44 }
+
+/** Windows 11 22H2+ (build 22621) supports acrylic window backgrounds. */
+const canAcrylic = process.platform === 'win32' && Number(process.getSystemVersion().split('.')[2] ?? 0) >= 22621
 
 function createWindow() {
   win = new BrowserWindow({
@@ -36,7 +42,8 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 660,
     show: false,
-    backgroundColor: '#07080c',
+    backgroundColor: settings.get().app.windowGlass && canAcrylic ? '#00000000' : '#03050b',
+    backgroundMaterial: settings.get().app.windowGlass && canAcrylic ? 'acrylic' : 'none',
     titleBarStyle: 'hidden',
     titleBarOverlay: TITLEBAR,
     icon: nativeImage.createFromPath(iconPath(256)),
@@ -67,16 +74,40 @@ function send(channel: string, payload: unknown) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
 }
 
+const hotkeySig = (s: Settings) => JSON.stringify([s.capture.clipHotkey, s.capture.extraHotkeys, s.capture.lengthUpHotkey, s.capture.lengthDownHotkey])
+
+/** Show the new clip length over the game; it is the only feedback you get while playing. */
+function announceLength(r: { seconds: number; edge: 'min' | 'max' | null }) {
+  const c = settings.get().capture
+  const keys = [c.lengthDownHotkey, c.lengthUpHotkey].filter(Boolean).join(' / ')
+  const sub = r.edge === 'max' ? `Longest your ${recorder.effectiveCapture().bufferSeconds}s buffer allows` : r.edge === 'min' ? 'Shortest preset' : keys ? `${keys} to change` : ''
+  overlay?.show(`Clip length: ${r.seconds}s`, sub, 'info', 1800)
+}
+
+/** Registers the main clip hotkey, extra length hotkeys and the in-game length up/down keys. */
 function registerHotkey(s: Settings) {
-  if (registeredHotkey) globalShortcut.unregister(registeredHotkey)
+  for (const k of registeredKeys) globalShortcut.unregister(k)
+  registeredKeys.clear()
   registeredHotkey = ''
-  const key = s.capture.clipHotkey.trim()
-  if (!key) { recorder.setHotkeyRegistered(false); return }
-  let ok = false
-  try { ok = globalShortcut.register(key, () => void recorder.clipNow('hotkey')) } catch { ok = false }
-  if (ok) registeredHotkey = key
-  else recorder.log('error', `Could not register hotkey "${key}" - another app (Medal?) already uses it. Pick a different key under Settings.`)
-  recorder.setHotkeyRegistered(ok)
+  hotkeySignature = hotkeySig(s)
+  const failed: string[] = []
+  const reg = (accel: string, fn: () => void): boolean | undefined => {
+    const k = accel.trim()
+    if (!k) return undefined
+    if (registeredKeys.has(k)) { failed.push(`${k} (used twice)`); return false }
+    let ok = false
+    try { ok = globalShortcut.register(k, fn) } catch { ok = false }
+    if (ok) registeredKeys.add(k)
+    else failed.push(k)
+    return ok
+  }
+  const mainOk = reg(s.capture.clipHotkey, () => void recorder.clipNow('hotkey'))
+  if (mainOk) registeredHotkey = s.capture.clipHotkey.trim()
+  for (const x of s.capture.extraHotkeys) reg(x.key, () => void recorder.clipNow('hotkey', x.seconds))
+  reg(s.capture.lengthUpHotkey, () => announceLength(recorder.stepClipLength(1)))
+  reg(s.capture.lengthDownHotkey, () => announceLength(recorder.stepClipLength(-1)))
+  if (failed.length) recorder.log('error', `Could not register ${failed.join(', ')} - another app (Medal?) may already use ${failed.length > 1 ? 'them' : 'it'}. Pick different keys under Settings.`)
+  recorder.setHotkeyRegistered(mainOk !== false && !!s.capture.clipHotkey.trim())
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -122,9 +153,18 @@ app.whenReady().then(async () => {
   scheduler.on('log', (m) => recorder.log('upload', m))
   scheduler.on('done', ({ clip, upload }) => send('upload-done', { clipId: clip.id, url: upload.url, title: clip.title }))
   settings.onChange((s) => {
-    if (s.capture.clipHotkey !== registeredHotkey) registerHotkey(s)
+    if (hotkeySig(s) !== hotkeySignature) registerHotkey(s)
+    tray?.refresh()
     // Keep the window in sync with changes made by the main process (YouTube connect, tray, etc.).
     send('settings-changed', s)
+    if (win && canAcrylic) {
+      const want = s.app.windowGlass ? 'acrylic' : 'none'
+      if (want !== currentMaterial) {
+        currentMaterial = want
+        win.setBackgroundColor(s.app.windowGlass ? '#00000000' : '#03050b')
+        win.setBackgroundMaterial(want)
+      }
+    }
   })
 
   /** Make a Discord-sized copy if needed, post it, remember it. */
@@ -171,7 +211,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('system:health', () => healthCheck(settings.get(), recorder.status))
   ipcMain.handle('system:testHotkey', (_e, accel: string) => {
     // Try registering without stealing the user's current hotkey.
-    if (!accel || accel === registeredHotkey) return accel === registeredHotkey && !!registeredHotkey
+    if (!accel) return false
+    if (registeredKeys.has(accel)) return true
     try {
       const ok = globalShortcut.register(accel, () => undefined)
       if (ok) globalShortcut.unregister(accel)
@@ -179,6 +220,7 @@ app.whenReady().then(async () => {
     } catch { return false }
   })
   ipcMain.handle('system:testOverlay', () => overlay?.show('Clipped!', 'This is how it looks in game', 'clip'))
+  ipcMain.handle('system:canAcrylic', () => canAcrylic)
   ipcMain.handle('window:minimize', () => win?.minimize())
   ipcMain.handle('window:hide', () => win?.hide())
 
@@ -256,10 +298,13 @@ app.whenReady().then(async () => {
     show: showWindow,
     startStop: () => void (recorder.status.running ? recorder.stop('manual') : recorder.start('manual')),
     clipNow: () => void recorder.clipNow('manual'),
+    lengths: () => ({ options: recorder.lengthOptions(), current: recorder.effectiveCapture().preSeconds }),
+    setLength: (n: number) => { recorder.setClipLength(n); announceLength({ seconds: n, edge: null }) },
     quit: () => { quitting = true; app.quit() },
     isRunning: () => recorder.status.running
   })
 
+  currentMaterial = settings.get().app.windowGlass && canAcrylic ? 'acrylic' : 'none'
   createWindow()
   registerHotkey(settings.get())
   scheduler.start()

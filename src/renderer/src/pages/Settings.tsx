@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Bell, CheckCircle2, FolderOpen, Gauge, KeyRound, MessageSquare, Mic, Monitor, RefreshCw, Sparkles, Stethoscope, Trophy, Youtube, XCircle } from 'lucide-react'
+import { AlertTriangle, Bell, Palette, CheckCircle2, FolderOpen, Gauge, KeyRound, MessageSquare, Mic, Monitor, RefreshCw, Sparkles, Stethoscope, Trophy, Youtube, XCircle } from 'lucide-react'
 import type { CaptureSettings, Encoder, HealthItem } from '../../../shared/types'
 import { QUALITY_PRESETS } from '../../../shared/types'
 import { startMeter } from '../lib/loopback'
@@ -118,9 +118,12 @@ export default function Settings() {
 
       <Section title="Hotkey & game detection" icon={<Monitor size={16} />}>
         <div className="grid grid-cols-2 gap-5">
-          <Field label="Clip hotkey" hint="Letters need a modifier so they don't fire while you type in chat.">
-            <HotkeyInput value={c.clipHotkey} onChange={(clipHotkey) => void setCap({ clipHotkey })} status={hotkeyStatus} />
-          </Field>
+          <div className="space-y-5">
+            <Field label="Clip hotkey" hint={`Saves the last ${c.preSeconds}s plus ${c.postSeconds}s after. Letters need a modifier so they don't fire while you type in chat.`}>
+              <HotkeyInput value={c.clipHotkey} onChange={(clipHotkey) => void setCap({ clipHotkey })} status={hotkeyStatus} />
+            </Field>
+            <InGameLength />
+          </div>
           <div className="space-y-3">
             <Toggle checked={a.autoStart === 'games'} onChange={(on) => void setApp({ autoStart: on ? 'games' : 'off' })} label="Start recording when a game opens" hint="Games are detected by their install folder (Steam, Epic, Xbox…) or a fullscreen window." />
             {a.autoStart === 'games' && (
@@ -148,6 +151,8 @@ export default function Settings() {
           </div>
         </div>
       </Section>
+
+      <Appearance />
 
       <Section title="Notifications & window" icon={<Bell size={16} />}>
         <div className="grid grid-cols-2 gap-x-8 gap-y-4">
@@ -318,5 +323,103 @@ function DiscordSettings() {
         </div>
       </div>
     </Section>
+  )
+}
+
+function Appearance() {
+  const { settings, save } = useStore()
+  const [canAcrylic, setCanAcrylic] = useState<boolean | null>(null)
+  useEffect(() => { void window.cf.system.canAcrylic().then(setCanAcrylic) }, [])
+  if (!settings) return null
+  const a = settings.app
+  return (
+    <Section title="Appearance" icon={<Palette size={16} />} desc="Liquid-glass panels with a light HUD layer. Effects only cost GPU while the window is open; in the tray they cost nothing.">
+      <div className="grid grid-cols-2 gap-6">
+        <Field label="Visual effects" hint={a.effects === 'full' ? 'Frosted glass, light rims and HUD details.' : 'Solid panels, no blur. Best for older GPUs or laptops on battery.'}>
+          <Segmented value={a.effects} onChange={(effects) => void save({ app: { ...a, effects } })} options={[{ value: 'full' as const, label: 'Liquid glass' }, { value: 'lite' as const, label: 'Lite' }]} ariaLabel="Visual effects" />
+        </Field>
+        <div className="pt-6">
+          <Toggle
+            checked={a.windowGlass}
+            onChange={(windowGlass) => void save({ app: { ...a, windowGlass } })}
+            label="See-through window (Windows 11 acrylic)"
+            hint={canAcrylic === false ? 'Needs Windows 11 22H2 or newer.' : 'Your desktop wallpaper shows through the window, frosted. Windows turns it solid while the window is inactive.'}
+          />
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+const fmtLen = (n: number) => (n >= 60 && n % 60 === 0 ? `${n / 60} min` : `${n}s`)
+
+/** Change clip length without leaving the game: step hotkeys + extra hotkeys with their own lengths. */
+function InGameLength() {
+  const { settings, save, status } = useStore()
+  const [state, setState] = useState<Record<string, 'ok' | 'conflict'>>({})
+  const c = settings?.capture
+  const keys = c ? [c.lengthUpHotkey, c.lengthDownHotkey, ...c.extraHotkeys.map((x) => x.key)].filter(Boolean) : []
+  const sig = keys.join('|')
+  useEffect(() => {
+    let alive = true
+    void Promise.all(keys.map(async (k) => [k, (await window.cf.system.testHotkey(k)) ? 'ok' : 'conflict'] as const)).then((r) => { if (alive) setState(Object.fromEntries(r)) })
+    return () => { alive = false }
+  }, [sig, status.hotkeyRegistered]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!c) return null
+  const setCap = (patch: Partial<typeof c>) => save({ capture: { ...c, ...patch } })
+  const presets = [...c.lengthPresets].sort((a, b) => a - b)
+  const usable = presets.filter((n) => n <= c.bufferSeconds)
+  const suggest = () => {
+    const base = c.clipHotkey || 'F9'
+    const used = new Set([c.clipHotkey, c.lengthUpHotkey, c.lengthDownHotkey, ...c.extraHotkeys.map((x) => x.key)])
+    const key = ['Shift+', 'Ctrl+', 'Alt+'].map((m) => m + base.split('+').pop()).find((k) => !used.has(k)) ?? ''
+    const seconds = usable.find((n) => n > c.preSeconds && !c.extraHotkeys.some((x) => x.seconds === n)) ?? usable[usable.length - 1] ?? 60
+    return { key, seconds }
+  }
+  return (
+    <div className="card-2 p-4 space-y-4">
+      <div>
+        <div className="text-sm font-semibold">Change clip length in game</div>
+        <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">Press these mid-game. The on-screen popup shows the new length, so you never have to tab out.</p>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((n) => (
+          <button
+            key={n}
+            disabled={n > c.bufferSeconds}
+            title={n > c.bufferSeconds ? `Longer than your ${c.bufferSeconds}s buffer` : `Clip the last ${fmtLen(n)}`}
+            onClick={() => void setCap({ preSeconds: n })}
+            className={`chip h-8 px-3 font-hud text-[11px] transition-all disabled:opacity-35 ${c.preSeconds === n ? 'text-ink border-accent/60 shadow-[0_0_14px_-4px_rgba(79,227,255,0.8)]' : 'hover:text-ink'}`}
+          >
+            {fmtLen(n)}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Shorter">
+          <HotkeyInput compact value={c.lengthDownHotkey} onChange={(lengthDownHotkey) => void setCap({ lengthDownHotkey })} status={state[c.lengthDownHotkey]} />
+        </Field>
+        <Field label="Longer">
+          <HotkeyInput compact value={c.lengthUpHotkey} onChange={(lengthUpHotkey) => void setCap({ lengthUpHotkey })} status={state[c.lengthUpHotkey]} />
+        </Field>
+      </div>
+      <div className="space-y-2">
+        <span className="label">Extra clip hotkeys</span>
+        {c.extraHotkeys.length === 0 && <p className="text-xs text-ink-3">Give a second key its own length, e.g. Shift+{(c.clipHotkey || 'F9').split('+').pop()} for a 1-minute clip.</p>}
+        {c.extraHotkeys.map((x, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <HotkeyInput compact value={x.key} onChange={(key) => void setCap({ extraHotkeys: c.extraHotkeys.map((y, j) => (j === i ? { ...y, key } : y)) })} status={state[x.key]} />
+            </div>
+            <select className="input w-28" value={x.seconds} aria-label="Clip length" onChange={(e) => void setCap({ extraHotkeys: c.extraHotkeys.map((y, j) => (j === i ? { ...y, seconds: Number(e.target.value) } : y)) })}>
+              {[...new Set([...presets, x.seconds])].sort((a, b) => a - b).map((n) => <option key={n} value={n} disabled={n > c.bufferSeconds}>{fmtLen(n)}</option>)}
+            </select>
+            <button className="btn-icon" aria-label="Remove hotkey" onClick={() => void setCap({ extraHotkeys: c.extraHotkeys.filter((_, j) => j !== i) })}>×</button>
+          </div>
+        ))}
+        <button className="btn-sm" onClick={() => void setCap({ extraHotkeys: [...c.extraHotkeys, suggest()] })}>+ Add a clip hotkey</button>
+      </div>
+      {presets.some((n) => n > c.bufferSeconds) && <p className="text-[11px] text-ink-3">Lengths over {c.bufferSeconds}s are greyed out. Raise “Keep the last” above to unlock them.</p>}
+    </div>
   )
 }

@@ -46,7 +46,7 @@ function ToastCard({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   const Icon = { success: CheckCircle2, error: AlertCircle, info: Info, clip: Clapperboard }[toast.kind]
   const tone = { success: 'text-ok', error: 'text-bad', info: 'text-ink-2', clip: 'text-live' }[toast.kind]
   return (
-    <div role="status" className="pointer-events-auto card-2 bg-surface-2/95 backdrop-blur px-4 py-3 flex items-start gap-3 shadow-[var(--shadow-pop)] pop-in">
+    <div role="status" className="pointer-events-auto card-2 px-4 py-3 flex items-start gap-3 shadow-[var(--shadow-pop)] pop-in">
       <Icon size={18} className={`${tone} mt-0.5 shrink-0`} />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold leading-5">{toast.title}</div>

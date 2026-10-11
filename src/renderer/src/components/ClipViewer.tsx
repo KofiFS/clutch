@@ -128,11 +128,11 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
   const pct = (t: number) => (duration ? (t / duration) * 100 : 0)
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-[3px] flex items-center justify-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" className="card w-full max-w-[1320px] h-full max-h-[880px] flex overflow-hidden shadow-[var(--shadow-pop)] pop-in">
+    <div className="fixed inset-0 z-[100] bg-[rgba(2,8,20,0.5)] backdrop-blur-xl flex items-center justify-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" className="card hud w-full max-w-[1320px] h-full max-h-[880px] flex overflow-hidden shadow-[var(--shadow-pop)] pop-in">
         {/* Player column */}
-        <div className="flex-1 min-w-0 flex flex-col bg-black">
-          <div className="flex items-center gap-2 px-4 h-12 bg-surface-1/90 border-b border-line">
+        <div className="relative z-[2] flex-1 min-w-0 flex flex-col">
+          <div className="flex items-center gap-2 px-5 h-14 border-b border-white/10">
             <GameIcon src={clip.gameIcon ? fileUrl(clip.gameIcon) : undefined} name={clip.game} size={18} />
             <InlineEdit value={clip.title} onSave={(title) => void window.cf.library.update(clip.id, { title })} className="font-semibold text-[15px] truncate max-w-[520px]" />
             <span className="text-xs text-ink-3 truncate">{clip.game}</span>
@@ -143,7 +143,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 grid place-items-center relative" onClick={togglePlay}>
+          <div className="flex-1 min-h-0 grid place-items-center relative bg-black/70 m-3 mb-0 rounded-[18px] overflow-hidden" onClick={togglePlay}>
             <video
               ref={video}
               src={fileUrl(clip.file)}
@@ -164,16 +164,16 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
           </div>
 
           {/* Timeline */}
-          <div className="px-4 pt-3 pb-3 bg-surface-1 border-t border-line space-y-2">
+          <div className="px-4 pt-3 pb-3 space-y-2">
             <div
               ref={timeline}
-              className="relative h-10 rounded-lg bg-surface-3 border border-line cursor-pointer select-none touch-none"
+              className="relative h-11 rounded-full overflow-hidden cursor-pointer select-none touch-none border border-white/12" style={{ background: "rgba(0,10,25,0.45)", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.5)" }}
               onPointerDown={(e) => onPointerDown(e, 'seek')}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
             >
               {/* progress */}
-              <div className="absolute inset-y-0 left-0 bg-accent/25 rounded-l-lg" style={{ width: `${pct(time)}%` }} />
+              <div className="absolute inset-y-0 left-0" style={{ width: `${pct(time)}%`, background: "linear-gradient(90deg, rgba(155,123,255,0.35), rgba(79,227,255,0.45))" }} />
               {trim && (
                 <>
                   <div className="absolute inset-y-0 left-0 bg-black/55" style={{ width: `${pct(trim.start)}%` }} />
@@ -183,12 +183,12 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                   <div className="absolute top-0 bottom-0 w-3 -ml-1.5 bg-live rounded-r-md cursor-ew-resize z-10 grid place-items-center" style={{ left: `${pct(trim.end)}%` }} onPointerDown={(e) => { e.stopPropagation(); onPointerDown(e, 'end') }} title="Trim end (O)"><span className="w-0.5 h-4 bg-black/50" /></div>
                 </>
               )}
-              <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_6px_#fff] pointer-events-none" style={{ left: `${pct(time)}%` }} />
+              <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_10px_#4fe3ff,0_0_4px_#fff] pointer-events-none" style={{ left: `${pct(time)}%` }} />
             </div>
             <div className="flex items-center gap-2">
               <button className="btn-ghost h-9 w-9 px-0" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
               <button className="btn-ghost h-9 w-9 px-0" onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
-              <span className="text-xs tabular text-ink-2 w-24">{fmtTime(time)} / {fmtTime(duration)}</span>
+              <span className="font-hud text-[11px] tabular text-ink-2 w-28">{fmtTime(time)} / {fmtTime(duration)}</span>
               <span className="flex-1" />
               {trim ? (
                 <>
@@ -210,10 +210,10 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
         </div>
 
         {/* Side panel */}
-        <aside className="w-[340px] shrink-0 border-l border-line bg-surface-1 flex flex-col">
-          <div className="flex p-2 gap-1 border-b border-line">
+        <aside className="relative z-[2] w-[340px] shrink-0 border-l border-white/10 flex flex-col">
+          <div className="flex p-2.5 gap-1 border-b border-white/10">
             {(['details', 'share'] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={`flex-1 h-9 rounded-md text-sm font-medium capitalize transition-colors ${tab === t ? 'bg-surface-3 text-ink' : 'text-ink-3 hover:text-ink-2'}`}>{t}</button>
+              <button key={t} onClick={() => setTab(t)} className={`flex-1 h-9 rounded-full text-sm font-medium capitalize transition-all ${tab === t ? 'text-ink liquid bg-white/15 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.5),0_0_16px_-6px_rgba(79,227,255,0.7)]' : 'text-ink-3 hover:text-ink-2'}`}>{t}</button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">

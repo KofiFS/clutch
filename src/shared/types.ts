@@ -23,6 +23,13 @@ export interface CaptureSettings {
   systemAudio: boolean
   outputDir: string
   clipHotkey: string
+  /** More clip hotkeys, each saving its own length, e.g. Shift+F8 = 60 s. */
+  extraHotkeys: { key: string; seconds: number }[]
+  /** Change the clip length from inside a game. */
+  lengthUpHotkey: string
+  lengthDownHotkey: string
+  /** Steps the length hotkeys move through (seconds). */
+  lengthPresets: number[]
 }
 
 /** Per-game overrides of the capture settings. Keyed by lower-case process name. */
@@ -119,6 +126,10 @@ export interface AppBehavior {
   autoStopMinutes: number
   /** Keep deleted clips in a trash folder so they can be restored. */
   useTrash: boolean
+  /** 'full' = liquid glass blur + HUD effects; 'lite' = solid panels for weaker PCs. */
+  effects: 'full' | 'lite'
+  /** Windows 11 acrylic: the desktop shows through the window, frosted. */
+  windowGlass: boolean
 }
 
 export interface Settings {
@@ -251,7 +262,11 @@ export const DEFAULT_SETTINGS: Settings = {
     micDevice: '',
     systemAudio: true,
     outputDir: '',
-    clipHotkey: 'F9'
+    clipHotkey: 'F9',
+    extraHotkeys: [],
+    lengthUpHotkey: 'Alt+PageUp',
+    lengthDownHotkey: 'Alt+PageDown',
+    lengthPresets: [10, 20, 30, 60, 120]
   },
   vision: {
     enabled: false,
@@ -291,7 +306,9 @@ export const DEFAULT_SETTINGS: Settings = {
     clipSound: true,
     autoStart: 'games',
     autoStopMinutes: 5,
-    useTrash: true
+    useTrash: true,
+    effects: 'full',
+    windowGlass: false
   },
   blocklist: [],
   allowlist: [],
