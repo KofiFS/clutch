@@ -19,7 +19,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed'
 
 const api = {
   settings: {
@@ -62,7 +62,16 @@ const api = {
     emptyTrash: (): Promise<void> => ipcRenderer.invoke('library:emptyTrash'),
     reveal: (file: string) => ipcRenderer.invoke('library:reveal', file),
     openFolder: () => ipcRenderer.invoke('library:openFolder'),
-    trim: (id: string, startSec: number, endSec: number, mode: 'new' | 'replace'): Promise<Clip | null> => ipcRenderer.invoke('library:trim', id, startSec, endSec, mode)
+    trim: (id: string, startSec: number, endSec: number, mode: 'new' | 'replace'): Promise<Clip | null> => ipcRenderer.invoke('library:trim', id, startSec, endSec, mode),
+    viewed: (id: string): Promise<void> => ipcRenderer.invoke('library:viewed', id)
+  },
+  highlights: {
+    today: (): Promise<{ clip: Clip; score: number } | null> => ipcRenderer.invoke('highlights:today')
+  },
+  discord: {
+    check: (url: string): Promise<{ name: string; channelId: string; guildId?: string }> => ipcRenderer.invoke('discord:check', url),
+    post: (clipId: string, opts: { heading?: string; note?: string } = {}): Promise<{ transcoded: boolean }> => ipcRenderer.invoke('discord:post', clipId, opts),
+    postToday: (): Promise<Clip> => ipcRenderer.invoke('discord:postToday')
   },
   youtube: {
     connect: (): Promise<{ channelTitle: string }> => ipcRenderer.invoke('youtube:connect'),

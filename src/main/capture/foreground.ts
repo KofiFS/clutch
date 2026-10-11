@@ -1,5 +1,5 @@
 import { app, nativeImage } from 'electron'
-import { execFile } from 'node:child_process'
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { GameInfo } from '../../shared/types'
@@ -17,12 +17,15 @@ const PS_FOREGROUND = [
   '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);',
   '  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint f);',
   '  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);',
+  '  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);',
   '}',
   '"@',
   '$h=[FG]::GetForegroundWindow(); $procId=0; [FG]::GetWindowThreadProcessId($h,[ref]$procId) | Out-Null',
   '$r=New-Object RECT; [FG]::GetWindowRect($h,[ref]$r) | Out-Null',
   '$sw=[FG]::GetSystemMetrics(0); $sh=[FG]::GetSystemMetrics(1)',
-  '$fs = (($r.R-$r.L) -ge $sw) -and (($r.B-$r.T) -ge $sh)',
+  // Fullscreen = covers the screen AND has no title bar. Maximized apps cover the screen too but keep WS_CAPTION.
+  '$style=[FG]::GetWindowLong($h,-16); $caption=(($style -band 0x00C00000) -eq 0x00C00000)',
+  '$fs = (($r.R-$r.L) -ge $sw) -and (($r.B-$r.T) -ge $sh) -and (-not $caption)',
   '$p=Get-Process -Id $procId -ErrorAction SilentlyContinue',
   'if ($p) { $path=""; try { $path=$p.Path } catch {}; Write-Output ("{0}|{1}|{2}|{3}" -f $p.ProcessName, $p.MainWindowTitle, $path, $fs) }'
 ].join('\n')
@@ -34,14 +37,79 @@ export interface ForegroundApp {
   fullscreen: boolean
 }
 
-export function getForegroundApp(): Promise<ForegroundApp> {
-  return new Promise((resolve) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS_FOREGROUND], { windowsHide: true, timeout: 6000 }, (_err, stdout) => {
-      const line = String(stdout).trim().split(LINE_BREAK).pop() ?? ''
-      const [process = '', title = '', exePath = '', fs = ''] = line.split('|')
-      resolve({ process: process.trim(), title: title.trim(), exePath: exePath.trim(), fullscreen: fs.trim() === 'True' })
+function parseLine(line: string): ForegroundApp {
+  const [process = '', title = '', exePath = '', fs = ''] = line.split('|')
+  return { process: process.trim(), title: title.trim(), exePath: exePath.trim(), fullscreen: fs.trim() === 'True' }
+}
+
+/**
+ * One long-lived PowerShell that answers "what's in front?" each time we write a line to it.
+ * Spawning PowerShell every few seconds costs ~150 ms of CPU and a process start each time;
+ * this keeps game detection close to free.
+ */
+class ForegroundWatcher {
+  private proc: ChildProcessWithoutNullStreams | null = null
+  private waiting: ((line: string) => void)[] = []
+  private buf = ''
+  private ready: Promise<void> | null = null
+
+  private ensure() {
+    if (this.proc && !this.proc.killed && this.proc.exitCode === null) return
+    const NL = String.fromCharCode(10)
+    const body = PS_FOREGROUND.split(NL)
+    const addType = body.slice(0, body.indexOf('"@') + 1).join(NL)
+    const query = body.slice(body.indexOf('"@') + 1).join('; ').replace(/Write-Output \(/g, '$out = (')
+    const loop = `while ($true) { $req = [Console]::In.ReadLine(); if ($req -eq $null) { break }; $out='|||False'; ${query}; [Console]::Out.WriteLine($out); [Console]::Out.Flush() }`
+    const script = [addType, "$ErrorActionPreference='SilentlyContinue'", loop].join(NL)
+    const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true })
+    this.proc = proc
+    this.buf = ''
+    proc.stdout.setEncoding('utf8')
+    proc.stdout.on('data', (chunk: string) => {
+      this.buf += chunk
+      let i: number
+      while ((i = this.buf.indexOf(String.fromCharCode(10))) >= 0) {
+        const line = this.buf.slice(0, i).replace(/\r$/, '')
+        this.buf = this.buf.slice(i + 1)
+        this.waiting.shift()?.(line)
+      }
     })
-  })
+    proc.on('exit', () => {
+      this.proc = null
+      for (const w of this.waiting.splice(0)) w('|||False')
+    })
+    proc.stdin.on('error', () => undefined)
+  }
+
+  query(): Promise<ForegroundApp> {
+    this.ensure()
+    return new Promise((resolve) => {
+      const t = setTimeout(() => {
+        // Wedged (e.g. first Add-Type compile is slow): drop the waiter and restart next time.
+        const idx = this.waiting.indexOf(done)
+        if (idx >= 0) this.waiting.splice(idx, 1)
+        resolve(parseLine(''))
+      }, 8000)
+      const done = (line: string) => { clearTimeout(t); resolve(parseLine(line)) }
+      this.waiting.push(done)
+      this.proc?.stdin.write('q' + String.fromCharCode(10))
+    })
+  }
+
+  dispose() {
+    this.proc?.kill()
+    this.proc = null
+  }
+}
+
+const watcher = new ForegroundWatcher()
+
+export function getForegroundApp(): Promise<ForegroundApp> {
+  return watcher.query()
+}
+
+export function disposeForegroundWatcher() {
+  watcher.dispose()
 }
 
 const SYSTEM_PROCS = new Set([
@@ -50,7 +118,7 @@ const SYSTEM_PROCS = new Set([
 ])
 
 /** Processes that are never games even if they go fullscreen. */
-const NOT_GAMES = /^(chrome|msedge|firefox|opera|brave|discord|spotify|code|cursor|obs64|obs|vlc|potplayer(mini)?64|mpc-hc64|explorer|steam|steamwebhelper|epicgameslauncher|battle\.net|riotclientservices|unrealeditor|blender|photoshop|premiere pro|capcut|devenv|notepad\+\+|wordpad|winword|excel|powerpnt|teams|slack|zoom|medal|nvidia app|nzxt cam|sysmon)$/i
+const NOT_GAMES = /^(chrome|msedge|firefox|opera|brave|discord|spotify|code|cursor|obs64|obs|vlc|potplayer(mini)?64|mpc-hc64|explorer|steam|steamwebhelper|epicgameslauncher|battle\.net|riotclientservices|unrealeditor|blender|photoshop|premiere pro|capcut|devenv|notepad\+\+|wordpad|winword|excel|powerpnt|teams|slack|zoom|medal|nvidia app|nzxt cam|sysmon|claude|chatgpt|notion|obsidian|figma|whatsapp|telegram|outlook|olk|msedgewebview2|windowsterminal|powershell|cmd)$/i
 
 const GAME_PATH_HINTS = /steamapps|\\epic games\\|\\riot games\\|\\xboxgames\\|\\gog galaxy\\|\\gog games\\|\\battle\.net\\|\\ubisoft\\|\\ea games\\|\\origin games\\|\\games\\|\\minecraft|\\windowsapps\\/i
 

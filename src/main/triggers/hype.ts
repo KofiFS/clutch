@@ -1,0 +1,53 @@
+import { EventEmitter } from 'node:events'
+import type { HypeRules } from '../../shared/types'
+
+const COOLDOWN_MS = 15_000
+/** Time constant of the rolling "normal loudness" average. */
+const BASELINE_SECONDS = 12
+
+/**
+ * No-AI highlight detector. Keeps a slow rolling average of how loud the mic / voice chat usually
+ * is and fires when the level jumps well above it: yelling, laughing, "NO WAY". Costs a few
+ * arithmetic ops per audio level update (~10 per second), nothing else.
+ */
+export class HypeDetector extends EventEmitter<{ hype: [{ at: number; peakDb: number; source: 'mic' | 'system' }] }> {
+  private baseline: Record<'mic' | 'system', number> = { mic: -50, system: -50 }
+  private lastAt: Record<'mic' | 'system', number> = { mic: 0, system: 0 }
+  private lastFire = 0
+  private warmupUntil = 0
+
+  constructor(private rules: HypeRules) {
+    super()
+  }
+
+  setRules(rules: HypeRules) {
+    this.rules = rules
+  }
+
+  /** Call when recording starts so the baseline settles before anything fires. */
+  reset() {
+    this.baseline = { mic: -50, system: -50 }
+    this.warmupUntil = Date.now() + 5000
+  }
+
+  feed(source: 'mic' | 'system', db: number) {
+    const r = this.rules
+    if (!r.enabled) return
+    if (source === 'mic' && !r.onMic) return
+    if (source === 'system' && !r.onSystemAudio) return
+    const now = Date.now()
+    const dt = Math.min(1, Math.max(0.01, (now - (this.lastAt[source] || now)) / 1000))
+    this.lastAt[source] = now
+    const level = Math.max(-90, db)
+    const base = this.baseline[source]
+    // Asymmetric smoothing: the baseline rises slowly so one shout doesn't raise the bar.
+    const alpha = dt / (level > base ? BASELINE_SECONDS * 2 : BASELINE_SECONDS)
+    this.baseline[source] = base + (level - base) * Math.min(1, alpha)
+
+    if (now < this.warmupUntil || now - this.lastFire < COOLDOWN_MS) return
+    if (level >= r.minDb && level - base >= r.spikeDb) {
+      this.lastFire = now
+      this.emit('hype', { at: now, peakDb: level, source })
+    }
+  }
+}

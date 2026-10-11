@@ -24,6 +24,7 @@ export interface AddMeta {
   event?: string
   title?: string
   tags?: string[]
+  hypeDb?: number
 }
 
 /** JSON-backed clip index. One folder of mp4s + thumbnails, one index file, optional trash folder. */
@@ -112,6 +113,7 @@ export class Library extends EventEmitter<{ change: [] }> {
       event: meta.event,
       tags: meta.tags ?? [],
       favorite: false,
+      hypeDb: meta.hypeDb,
       width: info.width,
       height: info.height,
       fps: info.fps,
@@ -128,6 +130,20 @@ export class Library extends EventEmitter<{ change: [] }> {
     Object.assign(c, patch)
     this.save()
     return c
+  }
+
+  markViewed(id: string) {
+    const c = this.get(id)
+    if (!c) return
+    c.views = (c.views ?? 0) + 1
+    this.save()
+  }
+
+  markPosted(id: string) {
+    const c = this.get(id)
+    if (!c) return
+    c.discordPosts = [...(c.discordPosts ?? []), new Date().toISOString()]
+    this.save()
   }
 
   bulk(ids: string[], patch: { favorite?: boolean; addTags?: string[] }) {
@@ -207,5 +223,5 @@ export class Library extends EventEmitter<{ change: [] }> {
 function defaultTitle(trigger: TriggerSource): string {
   const d = new Date()
   const stamp = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-  return { hotkey: 'Clip', vision: 'Auto clip', voice: 'Voice chat', manual: 'Clip' }[trigger] + ' ' + stamp
+  return { hotkey: 'Clip', vision: 'Auto clip', voice: 'Voice chat', hype: 'Hype moment', manual: 'Clip' }[trigger] + ' ' + stamp
 }

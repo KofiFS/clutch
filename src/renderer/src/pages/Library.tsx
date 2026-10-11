@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckSquare, Eye, Film, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2 } from 'lucide-react'
+import { CheckSquare, Eye, Film, Flame, MessageSquare, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2 } from 'lucide-react'
 import type { Clip, TriggerSource } from '../../../shared/types'
 import { dayLabel, fileUrl, fmtDuration, timeAgo, useStore } from '../lib/store'
 import type { GameSummary } from '../../../shared/types'
 import { Empty, GameIcon, Kbd, useConfirm } from '../components/ui'
 import { useToast } from '../components/Toasts'
 
-const TRIGGER_ICON: Record<TriggerSource, typeof Eye> = { hotkey: Keyboard, vision: Eye, voice: Mic, manual: MousePointerClick }
-const TRIGGER_LABEL: Record<TriggerSource, string> = { hotkey: 'Hotkey', vision: 'Auto', voice: 'Voice', manual: 'Manual' }
+const TRIGGER_ICON: Record<TriggerSource, typeof Eye> = { hotkey: Keyboard, vision: Eye, voice: Mic, hype: Flame, manual: MousePointerClick }
+const TRIGGER_LABEL: Record<TriggerSource, string> = { hotkey: 'Hotkey', vision: 'AI', voice: 'Voice', hype: 'Hype', manual: 'Manual' }
 
 export default function Library() {
   const { libraryVersion, settings, openClip, viewerClipId } = useStore()
@@ -82,6 +82,16 @@ export default function Library() {
   }
   const bulkFav = (favorite: boolean) => void window.cf.library.bulk([...selected], { favorite })
   const bulkTag = () => { if (tagDraft?.trim()) void window.cf.library.bulk([...selected], { addTags: tagDraft.split(',').map((t) => t.trim()).filter(Boolean) }); setTagDraft(null) }
+  const bulkDiscord = async () => {
+    const ids = [...selected]
+    setSelected(new Set())
+    toast.push({ kind: 'info', title: `Posting ${ids.length} clip${ids.length > 1 ? 's' : ''} to Discord…` })
+    let ok = 0
+    for (const id of ids) {
+      try { await window.cf.discord.post(id); ok++ } catch (e) { toast.push({ kind: 'error', title: 'Discord post failed', body: String((e as Error)?.message ?? e) }); break }
+    }
+    if (ok) toast.push({ kind: 'success', title: `Posted ${ok} clip${ok > 1 ? 's' : ''} to Discord` })
+  }
   const bulkUpload = () => { for (const id of selected) void window.cf.upload.enqueue(id, 'youtube'); toast.push({ kind: 'success', title: `Queued ${selected.size} upload${selected.size > 1 ? 's' : ''}` }); setSelected(new Set()) }
 
   return (
@@ -118,7 +128,7 @@ export default function Library() {
           <span className="absolute right-2.5 top-2"><Kbd>/</Kbd></span>
         </div>
         <div className="inline-flex p-1 rounded-[10px] bg-surface-2 border border-line gap-0.5">
-          {(['all', 'hotkey', 'vision', 'voice'] as const).map((t) => (
+          {(['all', 'hotkey', 'hype', 'voice', 'vision'] as const).map((t) => (
             <button key={t} onClick={() => setTrigger(t)} className={`h-8 px-3 rounded-md text-sm font-medium transition-colors ${trigger === t ? 'bg-surface-4 text-ink' : 'text-ink-3 hover:text-ink-2'}`}>{t === 'all' ? 'All' : TRIGGER_LABEL[t]}</button>
           ))}
         </div>
@@ -195,6 +205,7 @@ export default function Library() {
               ) : (
                 <input autoFocus className="input h-8 w-44 text-xs" placeholder="funny, clutch…" value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') bulkTag(); if (e.key === 'Escape') setTagDraft(null) }} onBlur={bulkTag} />
               )}
+              <button className="btn-sm" onClick={() => void bulkDiscord()} disabled={!settings?.discord.webhookUrl} title={settings?.discord.webhookUrl ? '' : 'Add a Discord webhook in Settings first'}><MessageSquare size={13} /> Discord</button>
               <button className="btn-sm" onClick={bulkUpload} disabled={!settings?.upload.youtube.connected} title={settings?.upload.youtube.connected ? '' : 'Connect YouTube first'}><UploadCloud size={13} /> Upload</button>
               <button className="btn-sm hover:text-bad" onClick={() => void trashSelected()}><Trash2 size={13} /> Delete <Kbd>Del</Kbd></button>
             </>

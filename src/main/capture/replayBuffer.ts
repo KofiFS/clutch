@@ -220,14 +220,20 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     const grab = `ddagrab=output_idx=${s.monitorIndex}:framerate=${s.fps}:draw_mouse=1`
     const scaleExpr = scale === 1 ? '' : `,scale=trunc(iw*${scale}/2)*2:trunc(ih*${scale}/2)*2`
     const parts: string[] = []
+    // The screenshot branch only exists while AI watching is on; otherwise frames never leave the GPU
+    // for anything but the encoder (NVENC at native res) and FFmpeg does no extra work.
+    const snaps = this.snapshotsEnabled
+    const split = snaps ? ',split=2[v][vsnap0]' : '[v]'
     if (useD3D) {
-      parts.push(`${grab},setpts=PTS-STARTPTS,split=2[v][vsnap0]`)
+      parts.push(`${grab},setpts=PTS-STARTPTS${split}`)
     } else {
-      parts.push(`${grab},setpts=PTS-STARTPTS,hwdownload,format=bgra${scaleExpr},format=nv12,split=2[v][vsnap0]`)
+      parts.push(`${grab},setpts=PTS-STARTPTS,hwdownload,format=bgra${scaleExpr},format=nv12${split}`)
     }
-    // Snapshot branch: drop to a low frame rate *before* pulling frames off the GPU.
-    const snapDownload = useD3D ? ',hwdownload,format=bgra' : ''
-    parts.push(`[vsnap0]fps=1/${this.snapshotIntervalSec}${snapDownload},scale=1024:-2,format=yuvj420p[snap]`)
+    if (snaps) {
+      // Drop to a low frame rate *before* pulling frames off the GPU.
+      const snapDownload = useD3D ? ',hwdownload,format=bgra' : ''
+      parts.push(`[vsnap0]fps=1/${this.snapshotIntervalSec}${snapDownload},scale=1024:-2,format=yuvj420p[snap]`)
+    }
 
     const audioLabels: string[] = []
     if (micIdx >= 0) {
@@ -258,7 +264,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     args.push('-f', 'segment', '-segment_time', String(SEG_SECONDS), '-segment_format', 'mpegts', '-reset_timestamps', '1', '-segment_start_number', String(this.segStartNumber), path.join(this.segDir, 'seg%06d.ts'))
 
     // Snapshot output (stdout)
-    args.push('-map', '[snap]', '-c:v', 'mjpeg', '-q:v', '6', '-f', 'image2pipe', 'pipe:1')
+    if (snaps) args.push('-map', '[snap]', '-c:v', 'mjpeg', '-q:v', '6', '-f', 'image2pipe', 'pipe:1')
 
     return args
   }

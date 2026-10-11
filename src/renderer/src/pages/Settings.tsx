@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Bell, CheckCircle2, FolderOpen, Gauge, KeyRound, Mic, Monitor, RefreshCw, Stethoscope, Youtube, XCircle } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCircle2, FolderOpen, Gauge, KeyRound, MessageSquare, Mic, Monitor, RefreshCw, Sparkles, Stethoscope, Trophy, Youtube, XCircle } from 'lucide-react'
 import type { CaptureSettings, Encoder, HealthItem } from '../../../shared/types'
 import { QUALITY_PRESETS } from '../../../shared/types'
 import { startMeter } from '../lib/loopback'
 import { useStore } from '../lib/store'
 import { HotkeyInput } from '../components/HotkeyInput'
 import { useToast } from '../components/Toasts'
-import { Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
+import { Badge, Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 
 const ENCODER_LABEL: Record<Encoder, string> = {
   auto: 'Auto (best available)',
@@ -162,7 +162,9 @@ export default function Settings() {
         </div>
       </Section>
 
-      <Section title="AI" icon={<KeyRound size={16} />} desc="Powers “watch the screen for moments”. Your key stays on this PC.">
+      <DiscordSettings />
+
+      <Section title="AI" icon={<KeyRound size={16} />} desc="Everything in ClipForge works without AI. Add a key to unlock screen watching and auto-titles. Your key stays on this PC." right={<Badge tone="accent"><Sparkles size={11} /> Optional</Badge>}>
         <div className="grid grid-cols-3 gap-5">
           <div className="col-span-2">
             <Field label="Anthropic API key" hint="console.anthropic.com → API keys. Screenshots are only sent while the trigger is on.">
@@ -180,6 +182,7 @@ export default function Settings() {
             </select>
           </Field>
         </div>
+        <Toggle checked={settings.ai.autoTitle} onChange={(autoTitle) => void save({ ai: { ...settings.ai, autoTitle } })} label="Name new clips automatically" hint="One small request per clip using its thumbnail, e.g. “Triple kill on B site”. Never overwrites a name you typed." />
       </Section>
 
       <Section title="Accounts" icon={<Youtube size={16} />} desc="Uploads use your own Google OAuth app, so your channel talks straight to YouTube.">
@@ -250,6 +253,70 @@ function Health({ onFix }: { onFix: (p: 'settings' | 'rules' | 'uploads') => voi
           )
         })}
       </ul>
+    </Section>
+  )
+}
+
+function DiscordSettings() {
+  const { settings, save } = useStore()
+  const toast = useToast()
+  const [url, setUrl] = useState<string | null>(null)
+  const [check, setCheck] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState('')
+  if (!settings) return null
+  const d = settings.discord
+  const set = (patch: Partial<typeof d>) => save({ discord: { ...d, ...patch } })
+  const value = url ?? d.webhookUrl
+
+  const test = async () => {
+    setBusy('test'); setCheck(null)
+    try {
+      const info = await window.cf.discord.check(value)
+      setCheck({ ok: true, text: `Connected to webhook “${info.name}”.` })
+      if (value !== d.webhookUrl) { await set({ webhookUrl: value.trim() }); setUrl(null) }
+    } catch (e) {
+      setCheck({ ok: false, text: String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': Error: /, '') })
+    } finally { setBusy('') }
+  }
+  const postToday = async () => {
+    setBusy('today')
+    try { const c = await window.cf.discord.postToday(); toast.push({ kind: 'success', title: 'Clip of the day posted', body: c.title }) }
+    catch (e) { toast.push({ kind: 'error', title: 'Nothing posted', body: String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': Error: /, '') }) }
+    finally { setBusy('') }
+  }
+
+  return (
+    <Section title="Discord" icon={<MessageSquare size={16} />} desc="Post clips straight into a channel, and let ClipForge share your clip of the day. Uses a channel webhook: no bot, no login.">
+      <div className="space-y-2">
+        <Field label="Channel webhook URL" hint="In Discord: channel ⚙ Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL.">
+          <div className="flex gap-2">
+            <input className="input" type="password" placeholder="https://discord.com/api/webhooks/…" value={value} onChange={(e) => { setUrl(e.target.value); setCheck(null) }} />
+            <button className="btn" disabled={!value || busy === 'test'} onClick={() => void test()}>{busy === 'test' ? 'Checking…' : value === d.webhookUrl ? 'Test' : 'Save & test'}</button>
+            {d.webhookUrl && <button className="btn-danger" onClick={() => { void set({ webhookUrl: '' }); setUrl(null); setCheck(null) }}>Remove</button>}
+          </div>
+        </Field>
+        {check && <p className={`text-xs flex items-center gap-1.5 ${check.ok ? 'text-ok' : 'text-bad'}`}>{check.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {check.text} {check.ok && <span className="text-ink-3">(Testing posts nothing.)</span>}</p>}
+      </div>
+      <div className="grid grid-cols-3 gap-5">
+        <Field label="Server upload limit" hint="Big or HEVC clips get a small H.264 copy that plays inline.">
+          <Segmented value={d.maxMb} onChange={(maxMb) => void set({ maxMb })} options={[{ value: 10, label: '10 MB' }, { value: 50, label: '50 MB' }, { value: 100, label: '100 MB' }]} />
+        </Field>
+        <Field label="Mention (optional)" hint="Added to every post, e.g. @here or a role.">
+          <input className="input" placeholder="@here" defaultValue={d.mention} onBlur={(e) => void set({ mention: e.target.value.trim() })} />
+        </Field>
+        <div />
+      </div>
+      <div className="card-2 p-4 flex items-start gap-4">
+        <span className="w-9 h-9 rounded-lg bg-warn/15 text-warn grid place-items-center shrink-0"><Trophy size={17} /></span>
+        <div className="flex-1 space-y-3">
+          <Toggle checked={d.dailyDigest.enabled} onChange={(enabled) => void set({ dailyDigest: { ...d.dailyDigest, enabled } })} label="Post my clip of the day" hint="Each day, the best clip is picked from favorites, hype level, trigger and views (no AI) and posted to the channel. You also get a Windows notification at that time." />
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-ink-2">Every day at</span>
+            <input type="time" className="input w-36 h-9" value={d.dailyDigest.time} onChange={(e) => void set({ dailyDigest: { ...d.dailyDigest, time: e.target.value } })} aria-label="Daily post time" />
+            <button className="btn-sm ml-auto" disabled={!d.webhookUrl || busy === 'today'} onClick={() => void postToday()}>{busy === 'today' ? 'Posting…' : "Post today's now"}</button>
+          </div>
+        </div>
+      </div>
     </Section>
   )
 }

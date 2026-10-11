@@ -57,6 +57,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         toast.push({ kind: 'clip', title: 'Clipped!', body: `${clip.title} · ${Math.round(clip.durationSec)}s`, action: { label: 'View', onClick: () => openClip(clip.id) } })
         if (settingsRef.current?.app.clipSound) playClipSound()
       }),
+      window.cf.on('settings-changed', (s: Settings) => setSettings(s)),
+      window.cf.on('open-clip', (id: string) => openClip(id)),
+      window.cf.on('clip-of-the-day', (clip: Clip) => {
+        toast.push({ kind: 'clip', title: 'Your clip of the day', body: `${clip.title} · ${clip.game}`, action: { label: 'Watch', onClick: () => openClip(clip.id) }, ms: 10000 })
+      }),
       window.cf.on('upload-done', (u: { clipId: string; url?: string; title: string }) => {
         toast.push({ kind: 'success', title: 'Uploaded to YouTube', body: u.title, action: u.url ? { label: 'Open', onClick: () => void window.cf.system.openExternal(u.url!) } : undefined })
       })

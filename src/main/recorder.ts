@@ -8,6 +8,8 @@ import { Library } from './library'
 import type { SettingsStore } from './settings'
 import { VisionJudge } from './triggers/vision'
 import { VoiceDetector } from './triggers/voice'
+import { HypeDetector } from './triggers/hype'
+import { suggestTitle } from './triggers/titler'
 
 const VISION_COOLDOWN_MS = 20_000
 const GAME_POLL_MS = 3000
@@ -27,6 +29,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   readonly buffer: ReplayBuffer
   readonly library: Library
   readonly voice: VoiceDetector
+  readonly hype: HypeDetector
   private vision: VisionJudge
   status: BufferStatus = { running: false }
   activity: ActivityEvent[] = []
@@ -46,6 +49,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.buffer = new ReplayBuffer(dataDir)
     this.library = new Library(dataDir)
     this.voice = new VoiceDetector(settings.get().voice)
+    this.hype = new HypeDetector(settings.get().hype)
     this.vision = new VisionJudge(settings.get().ai.anthropicApiKey, settings.get().ai.model)
 
     this.buffer.on('status', (st) => {
@@ -66,6 +70,13 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.buffer.on('levels', ({ micDb }) => {
       this.status.micLevelDb = micDb
       this.voice.onLevels(micDb, this.status.systemLevelDb ?? -100, 'mic')
+      this.hype.feed('mic', micDb)
+    })
+    this.hype.on('hype', ({ at, peakDb, source }) => {
+      if (!this.status.running) return
+      this.log('hype', `Hype spike on ${source === 'mic' ? 'your mic' : 'voice chat'} (${Math.round(peakDb)} dB)`)
+      const c = this.effectiveCapture()
+      void this.clipRange(at - c.preSeconds * 1000, at + Math.max(4, c.postSeconds) * 1000, 'hype', { event: source === 'mic' ? 'Hype moment' : 'Voice chat went off', hypeDb: peakDb })
     })
     this.buffer.on('log', (line) => this.log('info', line))
     this.buffer.on('snapshot', (jpeg) => void this.onSnapshot(jpeg))
@@ -79,12 +90,24 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       void this.clipRange(seg.startMs - 2000, seg.endMs + 1000, 'voice', { event: seg.source === 'mic' ? 'You talking' : 'Voice chat' })
     })
 
+    let lastVision = { enabled: settings.get().vision.enabled, interval: settings.get().vision.intervalSeconds }
     settings.onChange((s) => {
       this.voice.setRules(s.voice)
+      this.hype.setRules(s.hype)
       this.vision = new VisionJudge(s.ai.anthropicApiKey, s.ai.model)
       this.buffer.snapshotIntervalSec = s.vision.intervalSeconds
+      this.buffer.snapshotsEnabled = s.vision.enabled
+      // The screenshot branch is part of the FFmpeg graph, so toggling AI watching needs a quick restart.
+      const changed = lastVision.enabled !== s.vision.enabled || (s.vision.enabled && lastVision.interval !== s.vision.intervalSeconds)
+      lastVision = { enabled: s.vision.enabled, interval: s.vision.intervalSeconds }
+      if (changed && this.status.running && !this.starting) {
+        this.log('info', s.vision.enabled ? 'Turning on screen watching…' : 'Screen watching off - recording with no extra overhead')
+        const auto = this.autoStarted
+        void this.buffer.stop().then(() => this.start(auto ? 'auto' : 'manual'))
+      }
     })
     this.buffer.snapshotIntervalSec = settings.get().vision.intervalSeconds
+    this.buffer.snapshotsEnabled = settings.get().vision.enabled
 
     this.gameTimer = setInterval(() => void this.pollGame(), GAME_POLL_MS)
     void this.pollGame()
@@ -93,7 +116,8 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       if (!this.status.running) return
       const oldest = this.buffer.oldestAvailableMs()
       this.status.bufferedSeconds = oldest ? Math.round((Date.now() - oldest) / 1000) : 0
-      this.status.systemAudioActive = Date.now() - this.lastSysAudioAt < 1500
+      // Hidden windows deliver audio in bursts, so allow a few seconds between chunks.
+      this.status.systemAudioActive = Date.now() - this.lastSysAudioAt < 5000
       this.pushStatus()
     }, 2000)
   }
@@ -141,6 +165,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.activeCapture = capture
       this.autoStarted = reason === 'auto'
       this.voice.start()
+      this.hype.reset()
       this.vision.reset()
       const profileNote = s.profiles[this.game.process] ? ` using the ${s.profiles[this.game.process].name} profile` : ''
       this.log('info', `Recording started${reason === 'auto' ? ` for ${this.game.name}` : ''} (${this.buffer.encoder}, ${this.buffer.resolution} @ ${capture.fps} fps, keeps ${capture.bufferSeconds}s)${profileNote}`)
@@ -169,6 +194,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.lastSysAudioAt = Date.now()
     this.status.systemLevelDb = levelDb
     this.voice.onLevels(this.status.micLevelDb ?? -100, levelDb, 'sys')
+    this.hype.feed('system', levelDb)
   }
 
   private async pollGame() {
@@ -226,7 +252,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     return this.clipRange(now - c.preSeconds * 1000, now + c.postSeconds * 1000, trigger)
   }
 
-  async clipRange(startMs: number, endMs: number, trigger: TriggerSource, meta: { event?: string; title?: string } = {}) {
+  async clipRange(startMs: number, endMs: number, trigger: TriggerSource, meta: { event?: string; title?: string; hypeDb?: number } = {}) {
     if (!this.buffer.running) {
       this.log('error', 'Cannot clip: recording is not running')
       return
@@ -249,14 +275,32 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.log('info', `Saving ${trigger === 'manual' ? '' : trigger + ' '}clip (${Math.round((endMs - startMs) / 1000)}s)…`)
     try {
       const { file } = await this.buffer.saveRange({ startMs, endMs, outFile })
-      const clip = await this.library.add(file, { game: game.name, gameProcess: game.process || undefined, gameIcon: game.icon, trigger, event: meta.event, title: meta.title })
+      const clip = await this.library.add(file, { game: game.name, gameProcess: game.process || undefined, gameIcon: game.icon, trigger, event: meta.event, title: meta.title, hypeDb: meta.hypeDb })
       this.log('clip', `Saved "${clip.title}" (${Math.round(clip.durationSec)}s)`, clip.id)
       this.emit('clip', clip)
+      void this.autoTitle(clip)
       return clip
     } catch (e) {
       this.log('error', e instanceof Error ? e.message : String(e))
     } finally {
       this.pendingRanges = this.pendingRanges.filter((r) => r !== range)
+    }
+  }
+
+  /** Optional AI layer: rename the clip from its thumbnail. Silent no-op when off or without a key. */
+  private async autoTitle(clip: Clip) {
+    const s = this.settings.get()
+    if (!s.ai.autoTitle || !(s.ai.anthropicApiKey || process.env.ANTHROPIC_API_KEY)) return
+    try {
+      const title = await suggestTitle({ apiKey: s.ai.anthropicApiKey, model: s.ai.model, thumbnail: clip.thumbnail, game: clip.game, event: clip.event, trigger: clip.trigger })
+      const fresh = this.library.get(clip.id)
+      // Don't overwrite a name the user typed in the meantime.
+      if (title && fresh && fresh.title === clip.title) {
+        this.library.update(clip.id, { title })
+        this.log('info', `Named "${title}"`, clip.id)
+      }
+    } catch (e) {
+      this.log('info', `Auto-title skipped: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 

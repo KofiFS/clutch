@@ -35,8 +35,8 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
       setNeighbors({ prev: list[i - 1]?.id, next: list[i + 1]?.id })
     })
     setTrim(null)
-    setTab('details')
   }, [clipId, libraryVersion])
+  useEffect(() => { setTab('details'); void window.cf.library.viewed(clipId) }, [clipId])
 
   const seek = useCallback((t: number) => { if (video.current) video.current.currentTime = Math.max(0, Math.min(duration, t)) }, [duration])
   const togglePlay = useCallback(() => { const v = video.current; if (!v) return; v.paused ? void v.play() : v.pause() }, [])

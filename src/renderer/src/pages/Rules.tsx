@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Eye, Gamepad2, Mic, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Eye, Flame, Gamepad2, Mic, Plus, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import type { GameProfile } from '../../../shared/types'
 import type { GameSummary, RunningApp } from '../../../shared/types'
 import { fileUrl, useStore } from '../lib/store'
-import { Field, GameIcon, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
+import { Badge, Field, GameIcon, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 import { GamePicker } from '../components/GamePicker'
 
 const PRESETS = [
@@ -20,20 +20,61 @@ export default function Rules() {
   const vo = settings.voice
   const setVision = (patch: Partial<typeof v>) => save({ vision: { ...v, ...patch } })
   const setVoice = (patch: Partial<typeof vo>) => save({ voice: { ...vo, ...patch } })
+  const hy = settings.hype
+  const setHype = (patch: Partial<typeof hy>) => save({ hype: { ...hy, ...patch } })
   const hasKey = !!settings.ai.anthropicApiKey
 
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">What to clip</h1>
-        <p className="text-ink-3 text-sm mt-1">Three ways a clip gets made: your hotkey, moments spotted on screen, and people talking. Mix them however you like.</p>
+        <p className="text-ink-3 text-sm mt-1">Your hotkey always works. On top of it, these triggers clip for you. The first two run entirely on your PC with no AI and almost no CPU.</p>
       </header>
+
+      <Section
+        title="Hype moments"
+        icon={<Flame size={16} />}
+        desc="Clips when you or your friends suddenly get loud: yelling, laughing, “NO WAY”. It learns how loud you normally are and fires on spikes above that."
+        right={<div className="flex items-center gap-3"><Badge tone="ok">No AI</Badge><Toggle size="lg" checked={hy.enabled} onChange={(enabled) => void setHype({ enabled })} label={hy.enabled ? 'On' : 'Off'} /></div>}
+      >
+        <div className="grid grid-cols-2 gap-5">
+          <Toggle checked={hy.onMic} onChange={(onMic) => void setHype({ onMic })} label="My microphone" hint="The most reliable source: game sound isn't on your mic." />
+          <Toggle checked={hy.onSystemAudio} onChange={(onSystemAudio) => void setHype({ onSystemAudio })} label="Voice chat / game audio" hint="Catches friends going off, but explosions count too. Best for quieter games." />
+        </div>
+        <div className="grid grid-cols-2 gap-5">
+          <Slider label="Spike size" value={hy.spikeDb} min={8} max={30} step={1} format={(n) => `+${n} dB`} onChange={(spikeDb) => void setHype({ spikeDb })} hint="How much louder than normal counts. Raise it if normal talking triggers clips." />
+          <Slider label="Minimum loudness" value={hy.minDb} min={-40} max={-5} step={1} format={(n) => `${n} dB`} onChange={(minDb) => void setHype({ minDb })} hint="Ignore spikes in a quiet room below this level." />
+        </div>
+      </Section>
+
+      <Section
+        title="Only when people talk"
+        icon={<Mic size={16} />}
+        desc="Save a clip of every stretch of conversation: your mic, your friends in voice chat, or both. Great for Discord moments."
+        right={<div className="flex items-center gap-3"><Badge tone="ok">No AI</Badge><Toggle size="lg" checked={vo.enabled} onChange={(enabled) => void setVoice({ enabled })} label={vo.enabled ? 'On' : 'Off'} /></div>}
+      >
+        <div className="grid grid-cols-2 gap-5">
+          <Toggle checked={vo.onMic} onChange={(onMic) => void setVoice({ onMic })} label="My microphone" hint={settings.capture.micDevice || 'Pick a mic under Settings → Audio'} />
+          <Toggle checked={vo.onSystemAudio} onChange={(onSystemAudio) => void setVoice({ onSystemAudio })} label="Voice chat / game audio" hint="Uses system audio. Game sound counts too, so raise the threshold if gunfire triggers it." />
+        </div>
+        <div className="card-2 p-3 space-y-2">
+          <LevelMeter label="Mic" db={status.running ? status.micLevelDb : undefined} threshold={vo.thresholdDb} />
+          <LevelMeter label="System" db={status.running ? status.systemLevelDb : undefined} threshold={vo.thresholdDb} />
+          <p className="text-[11px] text-ink-3">{status.running ? 'The line is your threshold: anything past it counts as talking.' : 'Start recording to see live levels against the threshold.'}</p>
+        </div>
+        <div className="grid grid-cols-4 gap-5">
+          <Slider label="Threshold" value={vo.thresholdDb} min={-60} max={-10} step={1} format={(n) => `${n} dB`} onChange={(thresholdDb) => void setVoice({ thresholdDb })} />
+          <Slider label="Starts after" value={vo.minSpeechSeconds} min={0.5} max={5} step={0.5} format={(n) => `${n}s`} onChange={(minSpeechSeconds) => void setVoice({ minSpeechSeconds })} />
+          <Slider label="Ends after quiet" value={vo.silenceSeconds} min={1} max={15} step={1} format={(n) => `${n}s`} onChange={(silenceSeconds) => void setVoice({ silenceSeconds })} />
+          <Slider label="Max per clip" value={vo.maxClipSeconds} min={10} max={Math.max(30, settings.capture.bufferSeconds - 10)} step={5} format={(n) => `${n}s`} onChange={(maxClipSeconds) => void setVoice({ maxClipSeconds })} />
+        </div>
+      </Section>
 
       <Section
         title="Watch the screen for moments"
         icon={<Eye size={16} />}
-        desc="Describe in plain English what you want clipped. A screenshot is checked every few seconds and a clip is saved when the on-screen evidence matches."
-        right={<Toggle size="lg" checked={v.enabled} onChange={(enabled) => void setVision({ enabled })} label={v.enabled ? 'On' : 'Off'} />}
+        desc="Describe in plain English what you want clipped: kills, goals, wins. A screenshot is checked every few seconds and a clip is saved when the on-screen evidence matches. When this is off, ClipForge takes no screenshots at all."
+        right={<div className="flex items-center gap-3"><Badge tone="accent"><Sparkles size={11} /> Optional AI</Badge><Toggle size="lg" checked={v.enabled} onChange={(enabled) => void setVision({ enabled })} label={v.enabled ? 'On' : 'Off'} /></div>}
       >
         {!hasKey && (
           <div className="card-2 p-3 text-sm flex items-center gap-3 border-warn/40">
@@ -53,29 +94,6 @@ export default function Rules() {
           <Slider label="Minimum confidence" value={v.minConfidence} min={0.3} max={0.95} step={0.05} format={(n) => `${Math.round(n * 100)}%`} onChange={(minConfidence) => void setVision({ minConfidence })} hint="Raise it if you get clips of nothing; lower it if it misses moments." />
         </div>
         {v.enabled && status.running && <p className="text-xs text-ink-3">Last check: {status.visionLastVerdict ?? 'waiting for the first frame'}</p>}
-      </Section>
-
-      <Section
-        title="Only when people talk"
-        icon={<Mic size={16} />}
-        desc="Save a clip of every stretch of conversation: your mic, your friends in voice chat, or both. Great for Discord moments."
-        right={<Toggle size="lg" checked={vo.enabled} onChange={(enabled) => void setVoice({ enabled })} label={vo.enabled ? 'On' : 'Off'} />}
-      >
-        <div className="grid grid-cols-2 gap-5">
-          <Toggle checked={vo.onMic} onChange={(onMic) => void setVoice({ onMic })} label="My microphone" hint={settings.capture.micDevice || 'Pick a mic under Settings → Audio'} />
-          <Toggle checked={vo.onSystemAudio} onChange={(onSystemAudio) => void setVoice({ onSystemAudio })} label="Voice chat / game audio" hint="Uses system audio. Game sound counts too, so raise the threshold if gunfire triggers it." />
-        </div>
-        <div className="card-2 p-3 space-y-2">
-          <LevelMeter label="Mic" db={status.running ? status.micLevelDb : undefined} threshold={vo.thresholdDb} />
-          <LevelMeter label="System" db={status.running ? status.systemLevelDb : undefined} threshold={vo.thresholdDb} />
-          <p className="text-[11px] text-ink-3">{status.running ? 'The line is your threshold: anything past it counts as talking.' : 'Start recording to see live levels against the threshold.'}</p>
-        </div>
-        <div className="grid grid-cols-4 gap-5">
-          <Slider label="Threshold" value={vo.thresholdDb} min={-60} max={-10} step={1} format={(n) => `${n} dB`} onChange={(thresholdDb) => void setVoice({ thresholdDb })} />
-          <Slider label="Starts after" value={vo.minSpeechSeconds} min={0.5} max={5} step={0.5} format={(n) => `${n}s`} onChange={(minSpeechSeconds) => void setVoice({ minSpeechSeconds })} />
-          <Slider label="Ends after quiet" value={vo.silenceSeconds} min={1} max={15} step={1} format={(n) => `${n}s`} onChange={(silenceSeconds) => void setVoice({ silenceSeconds })} />
-          <Slider label="Max per clip" value={vo.maxClipSeconds} min={10} max={Math.max(30, settings.capture.bufferSeconds - 10)} step={5} format={(n) => `${n}s`} onChange={(maxClipSeconds) => void setVoice({ maxClipSeconds })} />
-        </div>
       </Section>
 
       <Section title="Which games" icon={<Gamepad2 size={16} />} desc="Pick from what's running now or games you've already clipped. The hotkey always works.">

@@ -76,6 +76,30 @@ export type Platform = 'youtube' | 'tiktok' | 'twitch'
 export interface AISettings {
   anthropicApiKey: string
   model: string
+  /** Give new clips a short title from their thumbnail (one small API call per clip). */
+  autoTitle: boolean
+}
+
+/** Non-AI "hype" trigger: a sudden loudness spike on mic / voice chat (yelling, laughing). */
+export interface HypeRules {
+  enabled: boolean
+  onMic: boolean
+  onSystemAudio: boolean
+  /** dB above the rolling average that counts as a spike. */
+  spikeDb: number
+  /** Minimum absolute level for a spike (ignore quiet rooms). */
+  minDb: number
+}
+
+export interface DiscordSettings {
+  /** Channel webhook URL from Discord → channel settings → Integrations → Webhooks. */
+  webhookUrl: string
+  /** Attachment size limit of the server (10 MB for most servers, 50/100 MB with boosts). */
+  maxMb: number
+  /** Post the best clip of the day automatically. */
+  dailyDigest: { enabled: boolean; time: string }
+  /** Mention text added to posts, e.g. "@everyone". */
+  mention: string
 }
 
 export interface AppBehavior {
@@ -102,6 +126,8 @@ export interface Settings {
   vision: VisionRules
   voice: VoiceRules
   upload: UploadSettings
+  discord: DiscordSettings
+  hype: HypeRules
   ai: AISettings
   app: AppBehavior
   /** Games (process names) never recorded, e.g. ["discord.exe"]. */
@@ -113,7 +139,7 @@ export interface Settings {
   startBufferOnLaunch: boolean
 }
 
-export type TriggerSource = 'hotkey' | 'vision' | 'voice' | 'manual'
+export type TriggerSource = 'hotkey' | 'vision' | 'voice' | 'hype' | 'manual'
 
 export interface Clip {
   id: string
@@ -139,6 +165,12 @@ export interface Clip {
   uploads: UploadRecord[]
   /** Set while the clip sits in the trash. */
   trashedAt?: string
+  /** Peak loudness (dBFS) around the trigger; used for "clip of the day" scoring. */
+  hypeDb?: number
+  /** Posted to Discord at these times. */
+  discordPosts?: string[]
+  /** Times the clip was opened in the viewer. */
+  views?: number
 }
 
 export interface UploadRecord {
@@ -189,7 +221,7 @@ export interface BufferStatus {
 
 export interface ActivityEvent {
   at: string
-  kind: 'info' | 'clip' | 'error' | 'vision' | 'voice' | 'upload' | 'game'
+  kind: 'info' | 'clip' | 'error' | 'vision' | 'voice' | 'hype' | 'upload' | 'game' | 'discord'
   message: string
   clipId?: string
 }
@@ -248,7 +280,9 @@ export const DEFAULT_SETTINGS: Settings = {
     },
     schedule: { enabled: false, times: ['18:00'], source: 'favorites', tag: 'upload', platforms: ['youtube'] }
   },
-  ai: { anthropicApiKey: '', model: 'claude-opus-5-5' },
+  discord: { webhookUrl: '', maxMb: 10, dailyDigest: { enabled: false, time: '20:00' }, mention: '' },
+  hype: { enabled: true, onMic: true, onSystemAudio: false, spikeDb: 18, minDb: -20 },
+  ai: { anthropicApiKey: '', model: 'claude-opus-5-5', autoTitle: false },
   app: {
     onboarded: false,
     minimizeToTray: true,

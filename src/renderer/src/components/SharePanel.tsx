@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, CheckCircle2, Clock, Copy, ExternalLink, Loader2, UploadCloud, XCircle, Youtube } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Clock, Copy, ExternalLink, Loader2, MessageSquare, Send, UploadCloud, XCircle, Youtube } from 'lucide-react'
 import type { Clip } from '../../../shared/types'
 import { useStore } from '../lib/store'
 import { useToast } from './Toasts'
@@ -50,7 +50,8 @@ export function SharePanel({ clip }: { clip: Clip }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm">
+      <DiscordBlock clip={clip} />
+      <div className="flex items-center gap-2 text-sm pt-4 border-t border-line">
         <span className="w-8 h-8 rounded-lg bg-[#ff0000]/15 text-[#ff4d4d] grid place-items-center"><Youtube size={16} /></span>
         <div className="min-w-0">
           <div className="font-semibold">YouTube</div>
@@ -125,4 +126,45 @@ export function SharePanel({ clip }: { clip: Clip }) {
 function toLocalInput(d: Date) {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function DiscordBlock({ clip }: { clip: Clip }) {
+  const { settings, setPage } = useStore()
+  const toast = useToast()
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const ready = !!settings?.discord.webhookUrl
+  const posts = clip.discordPosts ?? []
+  const post = async () => {
+    setBusy(true)
+    try {
+      const r = await window.cf.discord.post(clip.id, { note: note.trim() || undefined })
+      toast.push({ kind: 'success', title: 'Posted to Discord', body: r.transcoded ? `Sent a ${settings?.discord.maxMb} MB copy that plays inline.` : clip.title })
+      setNote('')
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Discord post failed', body: String((e as Error)?.message ?? e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="w-8 h-8 rounded-lg bg-[#5865F2]/20 text-[#8b95ff] grid place-items-center"><MessageSquare size={16} /></span>
+        <div className="min-w-0">
+          <div className="font-semibold">Discord</div>
+          <div className="text-xs text-ink-3 truncate">{ready ? (posts.length ? `Posted ${posts.length}× · last ${new Date(posts[posts.length - 1]).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : 'Plays inline in your channel') : 'Not set up'}</div>
+        </div>
+        {!ready && <button className="btn-sm ml-auto" onClick={() => setPage('settings')}>Set up</button>}
+      </div>
+      {ready && (
+        <>
+          <input className="input" placeholder="Add a message (optional)" value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void post() }} />
+          <button className="btn w-full bg-[#5865F2] border-[#5865F2] text-white hover:bg-[#4752c4] hover:border-[#4752c4]" disabled={busy} onClick={() => void post()}>
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {busy ? 'Preparing & posting…' : 'Post to Discord'}
+          </button>
+        </>
+      )}
+    </div>
+  )
 }

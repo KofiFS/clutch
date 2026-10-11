@@ -1,9 +1,11 @@
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, nativeImage, net, protocol, session, shell } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, nativeImage, net, Notification, protocol, session, shell } from 'electron'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Platform, Settings } from '../shared/types'
 import { detectEncoders, listAudioDevices, trimClip } from './capture/ffmpeg'
-import { listRunningApps } from './capture/foreground'
+import { disposeForegroundWatcher, listRunningApps } from './capture/foreground'
+import { checkWebhook, makeShareable, postClip } from './share/discord'
+import { clipOfTheDay, DailyDigest } from './highlights'
 import { healthCheck } from './health'
 import type { LibraryQuery } from './library'
 import { OverlayToast } from './overlay'
@@ -22,6 +24,7 @@ let scheduler: UploadScheduler
 let tray: AppTray | null = null
 let overlay: OverlayToast | null = null
 let registeredHotkey = ''
+let digest: DailyDigest | null = null
 let quitting = false
 
 const TITLEBAR = { color: '#0d0f15', symbolColor: '#aab2c5', height: 40 }
@@ -118,7 +121,41 @@ app.whenReady().then(async () => {
   scheduler.on('change', () => send('uploads-changed', null))
   scheduler.on('log', (m) => recorder.log('upload', m))
   scheduler.on('done', ({ clip, upload }) => send('upload-done', { clipId: clip.id, url: upload.url, title: clip.title }))
-  settings.onChange((s) => { if (s.capture.clipHotkey !== registeredHotkey) registerHotkey(s) })
+  settings.onChange((s) => {
+    if (s.capture.clipHotkey !== registeredHotkey) registerHotkey(s)
+    // Keep the window in sync with changes made by the main process (YouTube connect, tray, etc.).
+    send('settings-changed', s)
+  })
+
+  /** Make a Discord-sized copy if needed, post it, remember it. */
+  const postToDiscord = async (clipId: string, opts: { heading?: string; note?: string } = {}) => {
+    const clip = recorder.library.get(clipId)
+    if (!clip) throw new Error('Clip not found')
+    const d = settings.get().discord
+    if (!d.webhookUrl) throw new Error('Add a Discord webhook under Settings → Discord first')
+    recorder.log('discord', `Preparing "${clip.title}" for Discord…`, clip.id)
+    const { file, transcoded } = await makeShareable(clip, d.maxMb, path.join(dataDir, 'share'))
+    await postClip({ webhookUrl: d.webhookUrl, clip, file, heading: opts.heading, mention: d.mention || undefined, note: opts.note })
+    recorder.library.markPosted(clip.id)
+    recorder.log('discord', `Posted "${clip.title}" to Discord${transcoded ? ' (Discord-sized copy)' : ''}`, clip.id)
+    return { transcoded }
+  }
+
+  digest = new DailyDigest(recorder.library, () => settings.get().discord.dailyDigest)
+  digest.on('digest', ({ clip }) => {
+    send('clip-of-the-day', clip)
+    if (Notification.isSupported()) {
+      const n = new Notification({ title: 'Your clip of the day', body: `${clip.title} · ${clip.game}`, icon: nativeImage.createFromPath(clip.thumbnail) })
+      n.on('click', () => { showWindow(); send('open-clip', clip.id) })
+      n.show()
+    }
+    const d = settings.get().discord
+    if (d.dailyDigest.enabled && d.webhookUrl) {
+      postToDiscord(clip.id, { heading: '**Clip of the day**' }).catch((e) => recorder.log('error', `Clip of the day was not posted: ${e instanceof Error ? e.message : String(e)}`))
+    }
+  })
+  digest.on('empty', () => recorder.log('info', 'No clips today, so no clip of the day'))
+  digest.start()
 
   // ---- IPC ----
   ipcMain.handle('settings:get', () => settings.get())
@@ -184,6 +221,17 @@ app.whenReady().then(async () => {
     return recorder.library.add(out, { game: clip.game, gameProcess: clip.gameProcess, gameIcon: clip.gameIcon, trigger: clip.trigger, event: clip.event, title: `${clip.title} (trimmed)`, tags: clip.tags })
   })
 
+  ipcMain.handle('library:viewed', (_e, id: string) => recorder.library.markViewed(id))
+  ipcMain.handle('highlights:today', () => clipOfTheDay(recorder.library) ?? null)
+  ipcMain.handle('discord:check', (_e, url: string) => checkWebhook(url))
+  ipcMain.handle('discord:post', (_e, clipId: string, opts: { heading?: string; note?: string }) => postToDiscord(clipId, opts))
+  ipcMain.handle('discord:postToday', async () => {
+    const best = clipOfTheDay(recorder.library)
+    if (!best) throw new Error('No clips recorded today yet')
+    await postToDiscord(best.clip.id, { heading: '**Clip of the day**' })
+    return best.clip
+  })
+
   ipcMain.handle('youtube:connect', async () => {
     const r = await scheduler.youtube().connect()
     settings.set({ upload: { ...settings.get().upload, youtube: { ...settings.get().upload.youtube, connected: true, channelTitle: r.channelTitle } } })
@@ -228,6 +276,8 @@ app.on('window-all-closed', () => {
 app.on('will-quit', async () => {
   globalShortcut.unregisterAll()
   overlay?.destroy()
+  digest?.stop()
+  disposeForegroundWatcher()
   recorder?.dispose()
   await recorder?.stop('manual')
 })

@@ -1,26 +1,32 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, Clapperboard, Eye, Gamepad2, Mic, UploadCloud, Zap, Film, ChevronRight, Activity } from 'lucide-react'
+import { AlertCircle, Clapperboard, Eye, Gamepad2, Mic, UploadCloud, Zap, Film, ChevronRight, Activity, Flame, MessageSquare, Trophy, Send, Loader2 } from 'lucide-react'
 import type { Clip, HealthItem } from '../../../shared/types'
 import { fileUrl, fmtBytes, fmtDuration, timeAgo, useStore } from '../lib/store'
 import { GameIcon, LevelMeter, Section, Badge, Kbd } from '../components/ui'
+import { useToast } from '../components/Toasts'
 
 export default function Dashboard() {
   const { status, activity, settings, libraryVersion, start, clipNow, setPage, openClip, game, loopbackError } = useStore()
   const [recent, setRecent] = useState<Clip[]>([])
   const [stats, setStats] = useState<{ count: number; bytes: number; seconds: number } | null>(null)
   const [health, setHealth] = useState<HealthItem[]>([])
+  const [best, setBest] = useState<{ clip: Clip; score: number } | null>(null)
+  const [posting, setPosting] = useState(false)
+  const toast = useToast()
   useEffect(() => {
     void window.cf.library.query({ sort: 'newest' }).then((c) => setRecent(c.slice(0, 8)))
     void window.cf.library.stats().then(setStats)
+    void window.cf.highlights.today().then(setBest)
   }, [libraryVersion])
   useEffect(() => { void window.cf.system.health().then(setHealth) }, [status.running, status.hotkeyRegistered, settings])
   if (!settings) return null
 
   const problems = health.filter((h) => h.ok === false)
-  const kindIcon = { clip: Clapperboard, vision: Eye, voice: Mic, upload: UploadCloud, error: AlertCircle, info: Zap, game: Gamepad2 } as const
+  const kindIcon = { clip: Clapperboard, vision: Eye, voice: Mic, hype: Flame, upload: UploadCloud, error: AlertCircle, info: Zap, game: Gamepad2, discord: MessageSquare } as const
   const triggers = [
     { on: !!settings.capture.clipHotkey && status.hotkeyRegistered !== false, icon: Zap, label: 'Hotkey', desc: settings.capture.clipHotkey ? `${settings.capture.clipHotkey} · ${settings.capture.preSeconds}s back + ${settings.capture.postSeconds}s` : 'Not set', page: 'settings' as const },
-    { on: settings.vision.enabled && !!(settings.ai.anthropicApiKey), icon: Eye, label: 'Watching the screen', desc: settings.vision.enabled ? (settings.ai.anthropicApiKey ? `Every ${settings.vision.intervalSeconds}s · ${status.visionLastVerdict ?? 'waiting'}` : 'Needs an API key') : 'Off', page: 'rules' as const },
+    { on: settings.hype.enabled, icon: Flame, label: 'Hype moments', desc: settings.hype.enabled ? `Shouts & laughs · no AI` : 'Off', page: 'rules' as const },
+    { on: settings.vision.enabled && !!(settings.ai.anthropicApiKey), icon: Eye, label: 'AI screen watch', desc: settings.vision.enabled ? (settings.ai.anthropicApiKey ? `Every ${settings.vision.intervalSeconds}s · ${status.visionLastVerdict ?? 'waiting'}` : 'Needs an API key') : 'Off', page: 'rules' as const },
     { on: settings.voice.enabled, icon: Mic, label: 'When people talk', desc: settings.voice.enabled ? (status.talking ? 'Talking now…' : [settings.voice.onMic && 'mic', settings.voice.onSystemAudio && 'voice chat'].filter(Boolean).join(' + ')) : 'Off', page: 'rules' as const }
   ]
 
@@ -78,7 +84,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {triggers.map((t) => (
           <button key={t.label} onClick={() => setPage(t.page)} className={`card p-4 text-left transition-all hover:border-line-strong hover:-translate-y-px group ${t.on ? '' : 'opacity-70'}`}>
             <div className="flex items-center gap-2.5">
@@ -90,6 +96,37 @@ export default function Dashboard() {
           </button>
         ))}
       </div>
+
+      {best && (
+        <section className="card overflow-hidden flex fade-in">
+          <button className="w-[300px] shrink-0 aspect-video bg-surface-3 relative group" onClick={() => openClip(best.clip.id)} aria-label={`Watch ${best.clip.title}`}>
+            <img src={fileUrl(best.clip.thumbnail)} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+            <span className="absolute bottom-2 right-2 chip bg-black/70 border-0 text-white tabular">{fmtDuration(best.clip.durationSec)}</span>
+          </button>
+          <div className="flex-1 min-w-0 p-5 flex flex-col">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-warn"><Trophy size={14} /> Clip of the day</div>
+            <div className="text-lg font-semibold mt-1.5 truncate">{best.clip.title}</div>
+            <div className="text-sm text-ink-3 flex items-center gap-1.5 mt-0.5 min-w-0">
+              <GameIcon src={best.clip.gameIcon ? fileUrl(best.clip.gameIcon) : undefined} name={best.clip.game} size={16} />
+              <span className="truncate">{best.clip.game} · {timeAgo(best.clip.createdAt)}{best.clip.event ? ` · ${best.clip.event}` : ''}</span>
+            </div>
+            <p className="text-xs text-ink-3 mt-2 leading-relaxed">Picked from today's clips by favorites, hype level, how it was triggered and how often you watched it. {settings.discord.dailyDigest.enabled && settings.discord.webhookUrl ? `Posts to Discord at ${settings.discord.dailyDigest.time}.` : `You'll get a notification at ${settings.discord.dailyDigest.time}.`}</p>
+            <div className="flex gap-2 mt-auto pt-3">
+              <button className="btn" onClick={() => openClip(best.clip.id)}>Watch</button>
+              {settings.discord.webhookUrl ? (
+                <button className="btn bg-[#5865F2] border-[#5865F2] text-white hover:bg-[#4752c4] hover:border-[#4752c4]" disabled={posting} onClick={async () => {
+                  setPosting(true)
+                  try { await window.cf.discord.post(best.clip.id, { heading: '**Clip of the day**' }); toast.push({ kind: 'success', title: 'Clip of the day posted to Discord' }) }
+                  catch (e) { toast.push({ kind: 'error', title: 'Discord post failed', body: String((e as Error)?.message ?? e) }) }
+                  finally { setPosting(false) }
+                }}>{posting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Share to Discord</button>
+              ) : (
+                <button className="btn" onClick={() => setPage('settings')}><MessageSquare size={15} /> Connect Discord</button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="grid grid-cols-5 gap-5">
         <div className="col-span-3 space-y-5">
@@ -125,7 +162,7 @@ export default function Dashboard() {
             {activity.length === 0 && <li className="text-ink-3 text-sm">Nothing yet.</li>}
             {activity.slice(0, 60).map((ev, i) => {
               const Icon = kindIcon[ev.kind]
-              const tone = ev.kind === 'error' ? 'text-bad' : ev.kind === 'clip' ? 'text-ok' : ev.kind === 'vision' ? 'text-live' : ev.kind === 'game' ? 'text-accent-2' : 'text-ink-3'
+              const tone = ev.kind === 'error' ? 'text-bad' : ev.kind === 'clip' ? 'text-ok' : ev.kind === 'vision' ? 'text-live' : ev.kind === 'hype' ? 'text-warn' : ev.kind === 'discord' ? 'text-[#8b95ff]' : ev.kind === 'game' ? 'text-accent-2' : 'text-ink-3'
               return (
                 <li key={i} className="flex gap-2.5">
                   <Icon size={14} className={`mt-1 shrink-0 ${tone}`} />
