@@ -11,6 +11,17 @@ const SYS_RATE = 48000
 const SYS_CHANNELS = 2
 const SYS_BYTES_PER_SEC = SYS_RATE * SYS_CHANNELS * 2
 
+/** What to record: a whole monitor (optionally cropped), or one window. */
+export interface CaptureSource {
+  width: number
+  height: number
+  crop?: { x: number; y: number; w: number; h: number }
+  /** DXGI output to duplicate (screen capture); defaults to the monitor setting. */
+  outputIdx?: number
+  /** Capture this window itself; width/height are its size. */
+  window?: { hwnd: string }
+}
+
 export interface SaveRequest {
   /** Wall-clock ms. */
   startMs: number
@@ -61,7 +72,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
   missingSources: string[] = []
   private sysDb = -100
   private stopping = false
-  private display: { width: number; height: number; crop?: { x: number; y: number; w: number; h: number } } = { width: 0, height: 0 }
+  private display: CaptureSource = { width: 0, height: 0 }
   private restarts: number[] = []
   private segStartNumber = 0
   running = false
@@ -81,7 +92,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     return this.segDir
   }
 
-  async start(settings: CaptureSettings, display: { width: number; height: number; crop?: { x: number; y: number; w: number; h: number } }, opts: { restart?: boolean } = {}): Promise<void> {
+  async start(settings: CaptureSettings, display: CaptureSource, opts: { restart?: boolean } = {}): Promise<void> {
     if (this.running) await this.stop()
     this.settings = settings
     this.display = display
@@ -345,7 +356,12 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     // Filter graph
     const crop = this.display.crop
     const cropArgs = crop ? `:offset_x=${crop.x}:offset_y=${crop.y}:video_size=${crop.w}x${crop.h}` : ''
-    const grab = `ddagrab=output_idx=${s.monitorIndex}:framerate=${s.fps}:draw_mouse=1${cropArgs}`
+    // A window (game window / chosen window) is captured directly with Windows Graphics Capture:
+    // any monitor, follows the window, and nothing on top of it gets in. Otherwise the screen.
+    const win = this.display.window
+    const grab = win
+      ? `gfxcapture=hwnd=${win.hwnd}:max_framerate=${s.fps}:capture_cursor=1:display_border=0:resize_mode=scale_aspect:width=-2:height=-2,fps=${s.fps}`
+      : `ddagrab=output_idx=${this.display.outputIdx ?? s.monitorIndex}:framerate=${s.fps}:draw_mouse=1${cropArgs}`
     const scaleExpr = scale === 1 ? '' : `,scale=trunc(iw*${scale}/2)*2:trunc(ih*${scale}/2)*2`
     const parts: string[] = []
     // The screenshot branch only exists while AI watching is on; otherwise frames never leave the GPU

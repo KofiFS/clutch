@@ -5,6 +5,8 @@ import type { ActivityEvent, BufferStatus, CaptureSettings, Clip, GameInfo, Sett
 import { ReplayBuffer } from './capture/replayBuffer'
 import { listAudioDevices } from './capture/ffmpeg'
 import { cachedIcon, gameNameFrom, getForegroundApp, getWindowRect, listRunningApps, looksLikeGame, toGameInfo } from './capture/foreground'
+import { outputIndexFor } from './capture/outputs'
+import type { CaptureSource } from './capture/replayBuffer'
 import { Library } from './library'
 import type { SettingsStore } from './settings'
 import { VisionJudge, type CloudJudge } from './triggers/vision'
@@ -221,7 +223,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.status.since = new Date(opts.resume?.sinceMs ?? Date.now()).toISOString()
       const monW = Math.round(d.size.width * d.scaleFactor)
       const monH = Math.round(d.size.height * d.scaleFactor)
-      const { crop, label } = await this.resolveArea(capture, d, monW, monH)
+      const { source, label, fallback } = await this.resolveArea(capture, d, monW, monH)
       // A missing mic would make FFmpeg fail to start at all, so leave unplugged ones out.
       const wanted = (capture.audioSources ?? []).filter((x) => x.enabled && x.kind === 'mic' && x.device)
       if (wanted.length) {
@@ -231,7 +233,17 @@ export class Recorder extends EventEmitter<RecorderEvents> {
         for (const m of missing) this.log('info', `${m.name} (${m.device}) is not plugged in - recording without it`)
       } else this.buffer.missingSources = []
       this.status.areaLabel = label
-      await this.buffer.start(capture, { width: monW, height: monH, crop }, { restart: !!opts.resume })
+      await this.buffer.start(capture, source, { restart: !!opts.resume })
+      if (source.window && fallback) {
+        // Window capture can be refused (very old Windows, protected windows): fall back to
+        // cropping the window's own monitor.
+        await new Promise((r) => setTimeout(r, 2500))
+        if (!this.buffer.running) {
+          this.log('info', `Window capture was not available for this window, recording its area of the screen instead`)
+          this.status.areaLabel = fallback.label
+          await this.buffer.start(capture, fallback.source, { restart: true })
+        }
+      }
       this.activeCapture = capture
       this.autoStarted = reason === 'auto'
       this.voice.start()
@@ -292,38 +304,51 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   }
 
   /** Turn the configured capture area into a crop rectangle on the monitor (undefined = whole monitor). */
-  private async resolveArea(capture: CaptureSettings, d: Electron.Display, monW: number, monH: number): Promise<{ crop?: { x: number; y: number; w: number; h: number }; label: string }> {
+  /**
+   * What to record. Window modes capture the window itself (any monitor, nothing on top of it gets
+   * in); `fallback` crops that window's area out of the monitor it is actually on.
+   */
+  private async resolveArea(capture: CaptureSettings, d: Electron.Display, monW: number, monH: number): Promise<{ source: CaptureSource; label: string; fallback?: { source: CaptureSource; label: string } }> {
     const area = capture.area ?? { kind: 'monitor' }
     const even = (n: number) => Math.max(2, Math.floor(n / 2) * 2)
-    const clamp = (r: { x: number; y: number; w: number; h: number }) => {
-      const x = Math.max(0, Math.min(monW - 64, Math.round(r.x)))
-      const y = Math.max(0, Math.min(monH - 64, Math.round(r.y)))
-      const w = even(Math.min(monW - x, r.w))
-      const h = even(Math.min(monH - y, r.h))
+    const evenOff = (n: number) => Math.floor(n / 2) * 2
+    const clampTo = (W: number, H: number, r: { x: number; y: number; w: number; h: number }) => {
+      const x = Math.max(0, Math.min(W - 64, Math.round(r.x)))
+      const y = Math.max(0, Math.min(H - 64, Math.round(r.y)))
+      const w = even(Math.min(W - x, r.w))
+      const h = even(Math.min(H - y, r.h))
       // Covering (nearly) the whole monitor is the same as no crop.
-      if (w >= monW - 2 && h >= monH - 2) return undefined
-      // Offsets may be 0, so they get plain even rounding (sizes keep a minimum).
-      const evenOff = (n: number) => Math.floor(n / 2) * 2
+      if (w >= W - 2 && h >= H - 2) return undefined
       return { x: evenOff(x), y: evenOff(y), w, h }
     }
+    const whole: CaptureSource = { width: monW, height: monH }
     if (area.kind === 'region') {
-      const crop = clamp(area)
-      return { crop, label: crop ? `${area.label ?? 'Custom area'} ${crop.w}x${crop.h}` : 'Full screen' }
+      const crop = clampTo(monW, monH, area)
+      return { source: { ...whole, crop }, label: crop ? `${area.label ?? 'Custom area'} ${crop.w}x${crop.h}` : 'Full screen' }
     }
     if (area.kind === 'window' || area.kind === 'game') {
       const proc = area.kind === 'window' ? area.process : this.game.isGame ? this.game.process : ''
       const name = area.kind === 'window' ? area.title || area.process : this.game.name
-      if (!proc) return { label: 'Full screen (no game in front yet)' }
+      if (!proc) return { source: whole, label: 'Full screen (no game in front yet)' }
       const r = await getWindowRect(proc)
       if (!r || r.minimized) {
         this.log('info', `${name} window not found, recording the whole screen`)
-        return { label: `Full screen (${name} not open)` }
+        return { source: whole, label: `Full screen (${name} not open)` }
       }
-      const sf = d.scaleFactor
-      const crop = clamp({ x: r.x - Math.round(d.bounds.x * sf), y: r.y - Math.round(d.bounds.y * sf), w: r.w, h: r.h })
-      return { crop, label: crop ? `${name} window ${crop.w}x${crop.h}` : `${name} (fullscreen)` }
+      // The monitor the window is on (by its center), for the fallback crop.
+      const centerDip = screen.screenToDipPoint({ x: r.x + r.w / 2, y: r.y + r.h / 2 })
+      const md = screen.getDisplayNearestPoint(centerDip)
+      const sf = md.scaleFactor
+      const mW = Math.round(md.size.width * sf)
+      const mH = Math.round(md.size.height * sf)
+      const crop = clampTo(mW, mH, { x: r.x - Math.round(md.bounds.x * sf), y: r.y - Math.round(md.bounds.y * sf), w: r.w, h: r.h })
+      const outputIdx = await outputIndexFor(md)
+      const fallback = { source: { width: mW, height: mH, crop, outputIdx } as CaptureSource, label: crop ? `${name} area ${crop.w}x${crop.h}` : `${name} (fullscreen)` }
+      // CLUTCH_NO_WGC=1 forces the screen-crop path (troubleshooting).
+      if (!r.hwnd || process.env.CLUTCH_NO_WGC) return fallback
+      return { source: { width: even(r.w), height: even(r.h), window: { hwnd: r.hwnd } }, label: `${name} window`, fallback }
     }
-    return { label: 'Full screen' }
+    return { source: whole, label: 'Full screen' }
   }
 
   async stop(reason: 'manual' | 'auto' = 'manual') {

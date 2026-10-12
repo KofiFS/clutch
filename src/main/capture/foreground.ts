@@ -276,6 +276,8 @@ export interface WindowRect {
   w: number
   h: number
   minimized: boolean
+  /** Window handle, for capturing the window itself (Windows Graphics Capture). */
+  hwnd: string
 }
 
 /** Screen rectangle (physical pixels, without the invisible resize border) of a process's main window. */
@@ -293,15 +295,15 @@ export function getWindowRect(processName: string): Promise<WindowRect | null> {
     '}',
     '"@',
     `$p = Get-Process -Name '${name}' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1`,
-    'if ($p) { $r = New-Object WRECT; if ([WR]::DwmGetWindowAttribute($p.MainWindowHandle, 9, [ref]$r, 16) -ne 0) { [WR]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null }; Write-Output ("{0}|{1}|{2}|{3}|{4}" -f $r.L, $r.T, $r.R, $r.B, [WR]::IsIconic($p.MainWindowHandle)) }'
+    'if ($p) { $r = New-Object WRECT; if ([WR]::DwmGetWindowAttribute($p.MainWindowHandle, 9, [ref]$r, 16) -ne 0) { [WR]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null }; Write-Output ("{0}|{1}|{2}|{3}|{4}|{5}" -f $r.L, $r.T, $r.R, $r.B, [WR]::IsIconic($p.MainWindowHandle), $p.MainWindowHandle.ToInt64()) }'
   ].join(String.fromCharCode(10))
   return new Promise((resolve) => {
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 8000 }, (_err, stdout) => {
       const line = String(stdout).trim().split(LINE_BREAK).pop() ?? ''
-      const [l, t, r, b, min] = line.split('|')
+      const [l, t, r, b, min, hwnd] = line.split('|')
       const L = Number(l), T = Number(t), R = Number(r), B = Number(b)
       if (!Number.isFinite(L) || R - L < 2 || B - T < 2) return resolve(null)
-      resolve({ x: L, y: T, w: R - L, h: B - T, minimized: (min ?? '').trim() === 'True' })
+      resolve({ x: L, y: T, w: R - L, h: B - T, minimized: (min ?? '').trim() === 'True', hwnd: (hwnd ?? '').trim() })
     })
   })
 }
