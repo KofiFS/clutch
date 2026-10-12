@@ -19,7 +19,8 @@ export const PLANS = {
       cloudBackup: false,
       autoUploadSlots: 1,
       autoUploadPlatforms: 1,
-      adFree: false
+      adFree: false,
+      smartReadsPerDay: 3
     }
   },
   pro: {
@@ -34,7 +35,8 @@ export const PLANS = {
       cloudBackup: true,
       autoUploadSlots: 12,
       autoUploadPlatforms: 3,
-      adFree: true
+      adFree: true,
+      smartReadsPerDay: 25
     }
   }
 }

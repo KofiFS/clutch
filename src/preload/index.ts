@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, GameInfo, GameSummary, HealthItem, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
+import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, GameInfo, GameSummary, HealthItem, ImportChange, ImportResult, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
 
 export interface LibraryQuery {
   text?: string
@@ -74,6 +74,14 @@ const api = {
     toggleLong: (): Promise<unknown> => ipcRenderer.invoke('long:toggle'),
     bookmark: (): Promise<void> => ipcRenderer.invoke('bookmark:add'),
     togglePause: (): Promise<unknown> => ipcRenderer.invoke('buffer:togglePause')
+  },
+  /** Bring settings over from another recorder. */
+  importer: {
+    hasObs: (): Promise<boolean> => ipcRenderer.invoke('import:hasObs'),
+    obs: (): Promise<ImportResult> => ipcRenderer.invoke('import:obs'),
+    screenshots: (images: ArrayBuffer[]): Promise<ImportResult> => ipcRenderer.invoke('import:screenshots', images),
+    smart: (images: ArrayBuffer[]): Promise<ImportResult> => ipcRenderer.invoke('import:smart', images),
+    apply: (changes: ImportChange[]): Promise<Settings> => ipcRenderer.invoke('import:apply', changes)
   },
   /** The corner recording controller. */
   mini: {

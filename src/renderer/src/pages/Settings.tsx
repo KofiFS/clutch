@@ -8,6 +8,7 @@ import { HotkeyInput } from '../components/HotkeyInput'
 import { CaptureAreaSettings, StorageSettings } from '../components/CaptureAreaSettings'
 import { AudioSources } from '../components/AudioSources'
 import { AccountSection } from '../components/Account'
+import { ImportSettings } from '../components/ImportSettings'
 import { useToast } from '../components/Toasts'
 import { Badge, Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 
@@ -67,6 +68,8 @@ export default function Settings() {
       <AccountSection />
 
       <Health onFix={setPage} />
+
+      <ImportSettings />
 
       <CaptureAreaSettings />
 

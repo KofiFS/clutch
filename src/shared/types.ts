@@ -158,6 +158,8 @@ export interface PlanFeatures {
   autoUploadSlots: number
   autoUploadPlatforms: number
   adFree: boolean
+  /** Smart reads of settings screenshots per day (cloud AI). */
+  smartReadsPerDay?: number
 }
 
 export interface AccountState {
@@ -197,6 +199,7 @@ export const PLAN_ROWS: { label: string; free: string; pro: string }[] = [
   { label: 'Biggest clip to share', free: '100 MB', pro: '1 GB' },
   { label: 'Auto-upload schedule', free: '1 time a day', pro: 'Up to 12 a day' },
   { label: 'Back up favorites to the cloud', free: '—', pro: 'Automatic' },
+  { label: 'Smart import of Medal / OBS screenshots', free: '3 a day', pro: '25 a day' },
   { label: 'Sponsored cards', free: 'Optional (can turn off)', pro: 'Never' }
 ]
 
@@ -465,4 +468,48 @@ export interface GameSummary {
   process?: string
   icon?: string
   count: number
+}
+
+/** Settings read from another recorder (a screenshot of its settings, or OBS's files). */
+export interface ImportedSettings {
+  /** "Medal", "OBS", "NVIDIA App"... or "another recorder". */
+  app: string
+  fps?: number
+  /** Output height in pixels, or 'native'. */
+  outputHeight?: number | 'native'
+  quality?: 'low' | 'medium' | 'high' | 'max'
+  bitrateMbps?: number
+  /** Replay buffer length. */
+  bufferSeconds?: number
+  /** Total clip length. */
+  clipSeconds?: number
+  /** Electron accelerator, e.g. "Alt+F10". */
+  hotkey?: string
+  saveFolder?: string
+  /** Mic device name as the other app shows it; null = mic turned off there. */
+  mic?: string | null
+  systemAudio?: boolean
+  /** Things worth telling the user (unreadable fields, devices not on this PC). */
+  notes: string[]
+}
+
+/** One proposed change, shown with a checkbox before anything is applied. */
+export interface ImportChange {
+  id: string
+  label: string
+  from: string
+  to: string
+  patch: Partial<CaptureSettings>
+  warn?: string
+  /** Ticked by default. */
+  on: boolean
+}
+
+export interface ImportResult {
+  found: ImportedSettings
+  changes: ImportChange[]
+  /** How the screenshot was read. */
+  via: 'text' | 'smart' | 'obs-files'
+  /** Lines of text recognized (0 means the picture had no readable text). */
+  lines?: number
 }

@@ -11,6 +11,9 @@ import { clipOfTheDay, DailyDigest } from './highlights'
 import { healthCheck } from './health'
 import { isInside, serveFile } from './fileServer'
 import type { LibraryQuery } from './library'
+import { forSmartRead, hasObs, proposeChanges, readObs, readScreenshots } from './importer'
+import { applyChanges } from './importer/parse'
+import { fromModel, smartReadLocal } from './importer/smart'
 import { MiniWidget } from './miniWidget'
 import { OverlayToast } from './overlay'
 import { Recorder } from './recorder'
@@ -395,6 +398,40 @@ app.whenReady().then(async () => {
   ipcMain.handle('buffer:start', async () => { if (await recorder.start('manual')) shrinkToWidget() })
   ipcMain.handle('buffer:stop', () => recorder.stop('manual'))
   ipcMain.handle('buffer:togglePause', () => recorder.togglePause())
+  // Bring settings over from Medal / OBS / NVIDIA (nothing is changed until the user applies).
+  const toBuffers = (images: ArrayBuffer[]) => images.slice(0, 4).map((a) => Buffer.from(a))
+  ipcMain.handle('import:hasObs', () => hasObs())
+  ipcMain.handle('import:obs', async () => {
+    const found = readObs()
+    if (!found) throw new Error('No OBS profile was found on this PC')
+    return proposeChanges(found, settings.get(), 'obs-files')
+  })
+  ipcMain.handle('import:screenshots', async (_e, images: ArrayBuffer[]) => {
+    const { found, lines } = await readScreenshots(toBuffers(images), path.join(dataDir, 'tmp'))
+    return proposeChanges(found, settings.get(), 'text', lines)
+  })
+  /** Smart read: your own key if you have one, otherwise the Clutch server for signed-in users. */
+  ipcMain.handle('import:smart', async (_e, images: ArrayBuffer[]) => {
+    const imgs = forSmartRead(toBuffers(images))
+    const s = settings.get()
+    let found
+    if (s.ai.anthropicApiKey || process.env.ANTHROPIC_API_KEY) {
+      found = await smartReadLocal({ apiKey: s.ai.anthropicApiKey, model: s.ai.model, images: imgs })
+    } else {
+      if (!account.state.signedIn) throw new Error('SIGN_IN')
+      const r = await account.api<{ settings: Parameters<typeof fromModel>[0]; left: number }>('POST', '/api/import/read', { images: imgs })
+      found = fromModel(r.settings)
+      if (r.left <= 1) found.notes.push(r.left ? '1 smart read left today' : 'That was your last smart read today')
+    }
+    return proposeChanges(found, s, 'smart')
+  })
+  ipcMain.handle('import:apply', (_e, changes: import('../shared/types').ImportChange[]) => {
+    const cur = settings.get()
+    const next = settings.set({ capture: applyChanges(cur.capture, changes) })
+    const n = changes.filter((c) => c.on).length
+    recorder.log('info', `Imported ${n} setting${n === 1 ? '' : 's'}`)
+    return next
+  })
   // Corner controller
   ipcMain.handle('mini:expand', (_e, on?: boolean) => { mini?.setExpanded(on ?? !mini.isExpanded); return mini?.isExpanded ?? false })
   ipcMain.handle('mini:openMain', () => showWindow('dashboard'))

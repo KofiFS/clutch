@@ -101,7 +101,7 @@ src/main/        Electron main process: capture, triggers, library, uploads, clo
 src/preload/     the bridge the UI talks through (window.cf)
 src/renderer/    React + Tailwind UI
 src/shared/      types and settings shared by both sides
-server/          optional cloud server (Node, no dependencies)
+server/          optional cloud server (Node; only dependency is the Anthropic SDK for smart read)
 scripts/         icon import, FFmpeg fetch
 ```
 

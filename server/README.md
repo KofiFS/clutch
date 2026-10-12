@@ -62,3 +62,11 @@ Any host that runs Node 22 works (a small VPS, Fly.io, Railway, Render). Put it 
 `PUBLIC_URL` to the public address, set a long random `JWT_SECRET`, and keep `DATA_DIR` on a
 persistent disk (it holds the SQLite database). Then set `OFFICIAL_CLOUD_URL` in
 `src/shared/types.ts` of the desktop app to that address before building the installer.
+
+## Smart read (settings import)
+
+`POST /api/import/read` reads screenshots of another recorder's settings with Claude for signed-in
+users (the app tries Windows' offline text recognition first and only offers this when that comes up
+short). Set `ANTHROPIC_API_KEY` to turn it on; `SMART_READ_MODEL` picks the model. Limits come from
+`smartReadsPerDay` in `src/plans.mjs` (3 on Free, 25 on Pro). This feature adds the server's only
+dependencies (`@anthropic-ai/sdk`, `zod`), so run `npm install` in `server/` before starting it.

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-/** Minimal .env loader (KEY=value lines), so the server has no dependencies. */
+/** Minimal .env loader (KEY=value lines). */
 function loadDotEnv(file) {
   if (!fs.existsSync(file)) return
   for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
@@ -33,7 +33,10 @@ export const config = {
     google: { id: env('GOOGLE_CLIENT_ID'), secret: env('GOOGLE_CLIENT_SECRET') },
     twitch: { id: env('TWITCH_CLIENT_ID'), secret: env('TWITCH_CLIENT_SECRET') }
   },
-  stripe: { secretKey: env('STRIPE_SECRET_KEY'), priceId: env('STRIPE_PRICE_ID'), webhookSecret: env('STRIPE_WEBHOOK_SECRET') }
+  stripe: { secretKey: env('STRIPE_SECRET_KEY'), priceId: env('STRIPE_PRICE_ID'), webhookSecret: env('STRIPE_WEBHOOK_SECRET') },
+  // Optional: smart read of settings screenshots for people importing from Medal/OBS/NVIDIA.
+  anthropicKey: env('ANTHROPIC_API_KEY'),
+  smartReadModel: env('SMART_READ_MODEL', 'claude-opus-5-5')
 }
 
 if (!config.jwtSecret || config.jwtSecret.startsWith('change-me')) {

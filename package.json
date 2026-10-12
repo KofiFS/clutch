@@ -59,7 +59,8 @@
         "to": "resources",
         "filter": [
           "icon*.png",
-          "icon.ico"
+          "icon.ico",
+          "ocr.ps1"
         ]
       },
       {

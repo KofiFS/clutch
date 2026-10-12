@@ -14,6 +14,20 @@
 Allow/block lists and per-game profiles are under "What to clip". Lists only affect automatic
 triggers; the hotkey always works.
 
+## Bring your settings from Medal, OBS or NVIDIA
+
+Settings → **Bring your settings**. Screenshot the other app's settings (Win+Shift+S), then paste
+with Ctrl+V or drop the picture in. Up to 4 pictures, for example its Recorder and Hotkeys pages.
+
+- Clutch reads the text with Windows' built-in text recognition, on your PC, with no account or AI.
+  It understands frame rate, resolution, quality or bitrate, clip and replay length, the clip
+  hotkey, the save folder, the mic and game audio.
+- You see every change with a checkbox before anything is applied. The save folder is never
+  changed unless you tick it.
+- OBS installed? **Import from OBS on this PC** reads its profile files directly.
+- If a screenshot is hard to read, **smart read** asks Claude instead: with your own key under AI,
+  or through your Clutch account (3 a day on Free, 25 on Pro).
+
 ## Mini controller while recording
 
 When recording starts, Clutch tucks itself away and a small controller appears in the top-right

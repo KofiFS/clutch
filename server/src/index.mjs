@@ -12,6 +12,7 @@ import { storage } from './storage.mjs'
 import { billingEnabled, checkoutUrl, handleEvent, portalUrl, verifyWebhook } from './billing.mjs'
 import { devLoginPage, messagePage, sharePage } from './pages.mjs'
 import { users as usersDb } from './db.mjs'
+import { countSmartRead, smartRead, smartReadEnabled, smartReadsLeft } from './importer.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const adsFile = path.resolve(here, '..', 'ads.json')
@@ -193,6 +194,25 @@ async function route(req, res) {
     const b = await json(req)
     usersDb.setPlan(user.id, b.plan === 'pro' ? 'pro' : 'free')
     return send(res, 200, me(users.get(user.id)))
+  }
+
+  // --- settings import: smart read of screenshots (the app reads them offline first) ---
+  if (req.method === 'POST' && p === '/api/import/read') {
+    const user = authed(req)
+    if (!smartReadEnabled()) throw new HttpError(503, 'Smart read is not set up on this server.')
+    const { key, left } = smartReadsLeft(user.id, planOf(user).features.smartReadsPerDay ?? 3)
+    if (!left) throw new HttpError(429, "You have used all of today's smart reads. Try again tomorrow.")
+    let body
+    try { body = JSON.parse(await readBody(req, 12 * 1024 * 1024)) } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(400, 'Invalid JSON') }
+    const images = Array.isArray(body.images) ? body.images.slice(0, 4) : []
+    if (!images.length || !images.every((i) => i && ['image/jpeg', 'image/png', 'image/webp'].includes(i.media_type) && typeof i.data === 'string' && i.data.length < 5_000_000)) throw new HttpError(400, 'Send 1 to 4 JPEG or PNG screenshots')
+    countSmartRead(key)
+    try {
+      return send(res, 200, { settings: await smartRead(images), left: left - 1 })
+    } catch (e) {
+      console.error('[smart-read]', e?.message ?? e)
+      throw new HttpError(502, 'The smart read failed. Try again in a minute.')
+    }
   }
 
   // --- sponsored cards ---

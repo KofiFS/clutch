@@ -5,9 +5,15 @@
   "description": "Clutch cloud: sign-in (Discord, Google/YouTube, Twitch), cloud clip storage, share links, Pro subscriptions, sponsored cards.",
   "type": "module",
   "license": "GPL-3.0-or-later",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "start": "node --no-warnings src/index.mjs",
     "dev": "node --no-warnings --watch src/index.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "zod": "^3.25.76"
   }
 }
