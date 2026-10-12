@@ -4,7 +4,7 @@ import path from 'node:path'
 import type { ActivityEvent, BufferStatus, CaptureSettings, Clip, GameInfo, Settings, TriggerSource } from '../shared/types'
 import { ReplayBuffer } from './capture/replayBuffer'
 import { listAudioDevices } from './capture/ffmpeg'
-import { getForegroundApp, getWindowRect, toGameInfo } from './capture/foreground'
+import { cachedIcon, gameNameFrom, getForegroundApp, getWindowRect, listRunningApps, looksLikeGame, toGameInfo } from './capture/foreground'
 import { Library } from './library'
 import type { SettingsStore } from './settings'
 import { VisionJudge } from './triggers/vision'
@@ -43,6 +43,8 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   activity: ActivityEvent[] = []
   game: GameInfo = { name: 'Desktop', process: '' }
   private gameTimer: NodeJS.Timeout | null = null
+  private scanTimer: NodeJS.Timeout | null = null
+  private scanning = false
   private statusTimer: NodeJS.Timeout | null = null
   private lastVisionClipAt = 0
   private lastSysAudioAt = 0
@@ -115,9 +117,13 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     let lastAudio = JSON.stringify(settings.get().capture.audioSources)
     let lastLists = JSON.stringify([settings.get().extraGames, settings.get().allowlist, settings.get().blocklist])
     settings.onChange((s) => {
-      // The game lists changed: forget the remembered game so the new lists apply right away.
+      // The game lists changed: forget the remembered game only if it no longer counts as a game.
       const lists = JSON.stringify([s.extraGames, s.allowlist, s.blocklist])
-      if (lists !== lastLists) { lastLists = lists; this.stickyGame = null }
+      if (lists !== lastLists) {
+        lastLists = lists
+        const g = this.stickyGame?.info
+        if (g && !looksLikeGame({ process: g.process, title: g.name, exePath: g.exePath ?? '', fullscreen: false }, s.allowlist, s.extraGames ?? [])) this.stickyGame = null
+      }
       const audio = JSON.stringify(s.capture.audioSources)
       if (audio !== lastAudio) {
         lastAudio = audio
@@ -146,7 +152,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     if (settings.get().vision.enabled && !this.vision.ready) this.log('info', 'Screen watching is on but has no AI key, so it is paused. Add a key under Settings → AI.')
 
     this.gameTimer = setInterval(() => void this.pollGame(), GAME_POLL_MS)
-    void this.pollGame()
+    void this.pollGame().then(() => this.findAlreadyRunning())
+    // A game started before Clutch (or left open behind another window) is picked up within ~15 s.
+    this.scanTimer = setInterval(() => void this.findAlreadyRunning(), 15_000)
     // Light status heartbeat: buffered seconds + system-audio liveness.
     this.statusTimer = setInterval(() => {
       if (!this.status.running) return
@@ -386,6 +394,56 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   }
 
   /** Hotkey / manual: clip the last `preSeconds` plus the next `postSeconds`. */
+  /** Look through open windows for a game that is running but not in front (e.g. started before Clutch). */
+  private async findAlreadyRunning() {
+    const s = this.settings.get()
+    if (this.scanning || this.stickyGame || this.game.isGame || this.status.running || this.starting || this.paused || s.app.autoStart !== 'games') return
+    this.scanning = true
+    try {
+      const apps = await listRunningApps(s.extraGames ?? [], s.allowlist)
+      const found = apps.find((a) => a.isGame && a.pid)
+      if (!found || this.stickyGame || this.status.running) return
+      await this.useGame(found, 'auto')
+    } catch { /* try again next time */ } finally {
+      this.scanning = false
+    }
+  }
+
+  /**
+   * Record this game, wherever its window is: "Pick a game" on Home, or the background scan.
+   * The game becomes the remembered game, so focus can be anywhere.
+   */
+  async useGame(app: { process: string; title: string; exePath: string; pid?: number }, reason: 'manual' | 'auto' = 'manual') {
+    const s = this.settings.get()
+    const info: GameInfo = {
+      name: gameNameFrom(app),
+      process: app.process.toLowerCase(),
+      exePath: app.exePath || undefined,
+      icon: app.exePath ? await cachedIcon(app.process, app.exePath) : undefined,
+      isGame: true
+    }
+    if (app.pid) this.stickyGame = { info, pid: app.pid }
+    this.game = info
+    this.lastGameSeenAt = Date.now()
+    this.vision.reset()
+    this.emit('game', info)
+    this.status.recordingBlocked = this.recordingBlockedReason(s)
+    this.log('game', reason === 'auto' ? `${info.name} is already running` : `Recording ${info.name}`)
+    // Picking a game by hand also means "it is a game", so remember that for next time.
+    if (reason === 'manual' && !(s.extraGames ?? []).includes(info.process)) {
+      this.settings.set({ extraGames: [...(s.extraGames ?? []), info.process] })
+      if (app.pid) this.stickyGame = { info, pid: app.pid }
+    }
+    if (this.status.recordingBlocked && reason === 'auto') { this.pushStatus(); return }
+    if (this.status.running) {
+      // Re-aim at the game window (game-window recording area).
+      if (!this.long) { await this.buffer.stop(); await this.start(this.autoStarted ? 'auto' : 'manual') }
+    } else if (await this.start(reason)) {
+      if (reason === 'auto') this.emit('autoStarted')
+    }
+    this.pushStatus()
+  }
+
   /** "This is a game": add an app Clutch missed, then re-check right away so recording can start. */
   treatAsGame(process: string) {
     const s = this.settings.get()
@@ -596,6 +654,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
   dispose() {
     if (this.gameTimer) clearInterval(this.gameTimer)
+    if (this.scanTimer) clearInterval(this.scanTimer)
     if (this.statusTimer) clearInterval(this.statusTimer)
   }
 }

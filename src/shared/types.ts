@@ -464,6 +464,9 @@ export interface RunningApp {
   title: string
   exePath: string
   icon?: string
+  pid?: number
+  /** Clutch would treat it as a game (install folder, your lists). */
+  isGame?: boolean
 }
 
 export interface GameSummary {

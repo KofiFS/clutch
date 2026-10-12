@@ -349,7 +349,12 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('system:audioDevices', () => listAudioDevices())
   ipcMain.handle('system:encoders', () => detectEncoders())
-  ipcMain.handle('system:runningApps', () => listRunningApps())
+  ipcMain.handle('system:runningApps', () => listRunningApps(settings.get().extraGames ?? [], settings.get().allowlist))
+  ipcMain.handle('game:use', async (_e, app: { process: string; title: string; exePath: string; pid?: number }) => {
+    await recorder.useGame(app, 'manual')
+    if (recorder.status.running) shrinkToWidget()
+    return recorder.status
+  })
   ipcMain.handle('system:openExternal', (_e, url: string) => shell.openExternal(url))
   ipcMain.handle('system:health', () => healthCheck(settings.get(), recorder.status))
   ipcMain.handle('system:testHotkey', (_e, accel: string) => {

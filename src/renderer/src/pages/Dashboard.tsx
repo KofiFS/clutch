@@ -6,6 +6,7 @@ import { GameIcon, Section, Badge, Kbd, RingGauge, IconOrb } from '../components
 import { LiveMeter } from '../components/AudioSources'
 import { useToast } from '../components/Toasts'
 import { SponsoredCard } from '../components/Account'
+import { PickGame } from '../components/PickGame'
 
 export default function Dashboard() {
   const { status, activity, settings, libraryVersion, start, clipNow, setPage, openClip, game, loopbackError } = useStore()
@@ -72,7 +73,10 @@ export default function Dashboard() {
               ) : status.running ? (
                 <button className="btn-live px-6 h-11" onClick={() => void clipNow()}><Zap size={16} /> Clip the last {settings.capture.preSeconds}s {settings.capture.clipHotkey && <Kbd>{settings.capture.clipHotkey}</Kbd>}</button>
               ) : (
-                <button className="btn-primary px-6 h-11" disabled={status.starting} onClick={() => void start()}>{status.starting ? 'Starting…' : 'Start recording'}</button>
+                <>
+                  <button className="btn-primary px-6 h-11" disabled={status.starting} onClick={() => void start()}>{status.starting ? 'Starting…' : 'Start recording'}</button>
+                  <PickGame />
+                </>
               )}
               <button className={`btn h-11 px-5 ${status.longRecording ? 'text-[#ff8aa1] border-[#ff3b5c]/50' : ''}`} onClick={() => void window.cf.buffer.toggleLong()}>
                 <span className={`w-2 h-2 rounded-full ${status.longRecording ? 'bg-[#ff3b5c] shadow-[0_0_8px_#ff3b5c]' : 'bg-[#ff3b5c]/70'}`} />

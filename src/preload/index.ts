@@ -71,6 +71,8 @@ const api = {
     stop: (): Promise<void> => ipcRenderer.invoke('buffer:stop'),
     status: (): Promise<BufferStatus> => ipcRenderer.invoke('buffer:status'),
     clipNow: (): Promise<Clip | undefined> => ipcRenderer.invoke('clip:now'),
+    /** Record a game that is already open (wherever its window is). */
+    useGame: (app: RunningApp): Promise<BufferStatus> => ipcRenderer.invoke('game:use', app),
     toggleLong: (): Promise<unknown> => ipcRenderer.invoke('long:toggle'),
     bookmark: (): Promise<void> => ipcRenderer.invoke('bookmark:add'),
     togglePause: (): Promise<unknown> => ipcRenderer.invoke('buffer:togglePause')

@@ -50,6 +50,9 @@ const PS_FOREGROUND = [
   'if ($procId -and $lastName) { $title=([FG]::TitleOf($h)) -replace "[|]"," "; Write-Output ("{0}|{1}|{2}|{3}|{4}|{5}" -f $lastName, $title, $lastPath, $fs, $procId, $alive) } else { Write-Output ("|||False|0|{0}" -f $alive) }'
 ].join('\n')
 
+/** Open windows, for "Pick a game" and the already-running scan. Uses the same limited path lookup. */
+const PS_APPS = '$out = ((Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { "{0}|{1}|{2}|{3}" -f $_.ProcessName, ($_.MainWindowTitle -replace "[|]"," "), [FG]::PathOf([uint32]$_.Id), $_.Id }) -join [char]31)'
+
 /** Runs once when the helper starts: the cache that keeps repeat questions from touching the game. */
 const PS_INIT = '$lastPid=0; $lastPath=""; $lastName=""'
 
@@ -75,7 +78,8 @@ function parseLine(line: string): ForegroundApp {
  */
 class ForegroundWatcher {
   private proc: ChildProcessWithoutNullStreams | null = null
-  private waiting: ((line: string) => void)[] = []
+  private pending = new Map<number, (payload: string) => void>()
+  private nextId = 1
   private buf = ''
   private ready: Promise<void> | null = null
 
@@ -85,7 +89,9 @@ class ForegroundWatcher {
     const body = PS_FOREGROUND.split(NL)
     const addType = body.slice(0, body.indexOf('"@') + 1).join(NL)
     const query = body.slice(body.indexOf('"@') + 1).join('; ').replace(/Write-Output \(/g, '$out = (')
-    const loop = `while ($true) { $req = [Console]::In.ReadLine(); if ($req -eq $null) { break }; $out='|||False'; ${query}; [Console]::Out.WriteLine($out); [Console]::Out.Flush() }`
+    // Requests: "<id> fg <watch pid>" or "<id> apps". Answers: "<id><TAB><payload>", so a late answer
+    // can never be handed to the wrong caller.
+    const loop = `while ($true) { $line = [Console]::In.ReadLine(); if ($line -eq $null) { break }; $parts = $line.Split(' '); $rid = $parts[0]; if ($parts[1] -eq 'apps') { ${PS_APPS} } else { $req = 'q ' + $parts[2]; $out='|||False'; ${query} }; [Console]::Out.WriteLine($rid + [char]9 + $out); [Console]::Out.Flush() }`
     const script = [addType, "$ErrorActionPreference='SilentlyContinue'", PS_INIT, loop].join(NL)
     const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true })
     this.proc = proc
@@ -97,30 +103,41 @@ class ForegroundWatcher {
       while ((i = this.buf.indexOf(String.fromCharCode(10))) >= 0) {
         const line = this.buf.slice(0, i).replace(/\r$/, '')
         this.buf = this.buf.slice(i + 1)
-        this.waiting.shift()?.(line)
+        const tab = line.indexOf(String.fromCharCode(9))
+        const id = Number(line.slice(0, tab))
+        const fn = this.pending.get(id)
+        if (tab > 0 && fn) { this.pending.delete(id); fn(line.slice(tab + 1)) }
       }
     })
     proc.on('exit', () => {
       this.proc = null
-      for (const w of this.waiting.splice(0)) w('|||False')
+      for (const fn of this.pending.values()) fn('')
+      this.pending.clear()
     })
     proc.stdin.on('error', () => undefined)
   }
 
-  /** What's in front; with `watchPid`, also whether that process is still running. */
-  query(watchPid = 0): Promise<ForegroundApp> {
+  private ask(kind: string, timeoutMs = 8000): Promise<string> {
     this.ensure()
+    const id = this.nextId++
     return new Promise((resolve) => {
-      const t = setTimeout(() => {
-        // Wedged (e.g. first Add-Type compile is slow): drop the waiter and restart next time.
-        const idx = this.waiting.indexOf(done)
-        if (idx >= 0) this.waiting.splice(idx, 1)
-        resolve(parseLine(''))
-      }, 8000)
-      const done = (line: string) => { clearTimeout(t); resolve(parseLine(line)) }
-      this.waiting.push(done)
-      this.proc?.stdin.write(`q ${watchPid}` + String.fromCharCode(10))
+      // Wedged (e.g. the first Add-Type compile is slow): give up on this one; the id keeps a late
+      // answer from reaching anyone else.
+      const t = setTimeout(() => { this.pending.delete(id); resolve('') }, timeoutMs)
+      this.pending.set(id, (payload) => { clearTimeout(t); resolve(payload) })
+      this.proc?.stdin.write(`${id} ${kind}` + String.fromCharCode(10))
     })
+  }
+
+  /** What's in front; with `watchPid`, also whether that process is still running. */
+  async query(watchPid = 0): Promise<ForegroundApp> {
+    return parseLine(await this.ask(`fg ${watchPid}`))
+  }
+
+  /** Open windows: "process|title|path|pid" entries. */
+  async apps(): Promise<string[]> {
+    const out = await this.ask('apps', 10_000)
+    return out ? out.split(String.fromCharCode(31)) : []
   }
 
   dispose() {
@@ -147,7 +164,7 @@ const SYSTEM_PROCS = new Set([
 /** Processes that are never games even if they go fullscreen. */
 const NOT_GAMES = /^(chrome|msedge|firefox|opera|brave|discord|spotify|code|cursor|obs64|obs|vlc|potplayer(mini)?64|mpc-hc64|explorer|steam|steamwebhelper|epicgameslauncher|battle\.net|riotclientservices|unrealeditor|blender|photoshop|premiere pro|capcut|devenv|notepad\+\+|wordpad|winword|excel|powerpnt|teams|slack|zoom|medal|nvidia app|nzxt cam|sysmon|claude|chatgpt|notion|obsidian|figma|whatsapp|telegram|outlook|olk|msedgewebview2|windowsterminal|powershell|cmd|screenclippinghost|snippingtool|sharex|lightshot|gamebar|gamebarftserver|xboxpcappft|nvcontainer|nvidia overlay|rtss|msiafterburner)$/i
 
-const GAME_PATH_HINTS = /steamapps|\\epic games\\|\\riot games\\|\\xboxgames\\|\\gog galaxy\\|\\gog games\\|\\battle\.net\\|\\ubisoft\\|\\ea games\\|\\origin games\\|\\games\\|\\minecraft|\\windowsapps\\/i
+const GAME_PATH_HINTS = /steamapps|\\epic ?games\\|\\riot games\\|\\xboxgames\\|\\gog galaxy\\|\\gog games\\|\\battle\.net\\|\\ubisoft\\|\\ea games\\|\\origin games\\|\\games\\|\\minecraft|\\windowsapps\\/i
 
 export function isSystemProcess(process: string) {
   return SYSTEM_PROCS.has(process.toLowerCase())
@@ -223,26 +240,30 @@ export interface RunningApp {
   title: string
   exePath: string
   icon?: string
+  pid?: number
+  isGame?: boolean
 }
 
 /** Every app with a visible window right now: candidates for the allow/block lists. */
-export function listRunningApps(): Promise<RunningApp[]> {
-  const script = 'Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { $p=""; try { $p=$_.Path } catch {}; "{0}|{1}|{2}" -f $_.ProcessName, $_.MainWindowTitle, $p }'
-  return new Promise((resolve) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 8000 }, async (_err, stdout) => {
-      const seen = new Set<string>()
-      const apps: RunningApp[] = []
-      for (const line of String(stdout).split(LINE_BREAK)) {
-        const [process = '', title = '', exePath = ''] = line.split('|')
-        const key = process.trim().toLowerCase()
-        if (!key || seen.has(key) || SYSTEM_PROCS.has(key)) continue
-        seen.add(key)
-        apps.push({ process: process.trim(), title: title.trim(), exePath: exePath.trim() })
-      }
-      for (const a of apps) if (a.exePath) a.icon = await cachedIcon(a.process, a.exePath)
-      resolve(apps.sort((a, b) => a.process.localeCompare(b.process)))
-    })
-  })
+/**
+ * Apps with a window. Paths come from QueryFullProcessImageName with limited rights (the process list
+ * itself opens nothing): reading Process.Path instead opens every app with memory-read rights, which
+ * takes ~0.8 s per anti-cheat-protected game and is exactly what anti-cheat watches for.
+ */
+export async function listRunningApps(extraGames: string[] = [], allowlist: string[] = []): Promise<RunningApp[]> {
+  const seen = new Set<string>()
+  const apps: RunningApp[] = []
+  for (const line of await watcher.apps()) {
+    const [process = '', title = '', exePath = '', pid = '0'] = line.split('|')
+    const key = process.trim().toLowerCase()
+    if (!key || seen.has(key) || SYSTEM_PROCS.has(key)) continue
+    seen.add(key)
+    const app: RunningApp = { process: process.trim(), title: title.trim(), exePath: exePath.trim(), pid: Number(pid) || undefined }
+    app.isGame = looksLikeGame({ process: app.process, title: app.title, exePath: app.exePath, fullscreen: false }, allowlist, extraGames)
+    apps.push(app)
+  }
+  for (const a of apps) if (a.exePath) a.icon = await cachedIcon(a.process, a.exePath)
+  return apps.sort((a, b) => a.process.localeCompare(b.process))
 }
 
 export { nativeImage }

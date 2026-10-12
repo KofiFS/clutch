@@ -11,6 +11,10 @@
 | When people talk | What to clip | No AI. One clip per stretch of conversation on your mic and/or voice chat. |
 | Watch the screen | What to clip | Optional AI. Your plain-English rules are checked against a screenshot every few seconds (20 s cooldown between clips). Needs an Anthropic API key; costs one small request per check. |
 
+Started a game before Clutch, or it's open behind another window? Clutch looks through open windows
+when it starts and every 15 s while idle, and records the game it finds. You can also point it at one:
+Home → **Pick a game**.
+
 Game not detected (for example one running in a window)? Add it under What to clip → **Treat as a
 game**, or right-click the tray icon right after playing and pick **Treat … as a game**. Once a game
 has been in front, Clutch keeps recording it while it runs, even when you click into another window.
