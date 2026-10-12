@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { ImportedSettings, ImportResult, Settings } from '../../shared/types'
-import { listAudioDevices } from '../capture/ffmpeg'
+import { listAudioDevices, lowerPriority } from '../capture/ffmpeg'
 import { mergeFound, parseOcr, propose, type OcrLine } from './parse'
 
 /**
@@ -28,7 +28,7 @@ function prepare(buf: Buffer): { png: Buffer; scale: number } {
 
 function runOcr(file: string): Promise<OcrLine[]> {
   return new Promise((resolve, reject) => {
-    execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', ocrScript()], {
+    const child = execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', ocrScript()], {
       windowsHide: true, timeout: 30_000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, CLUTCH_OCR_IMAGE: file }
     }, (err, stdout) => {
       if (err) return reject(new Error('Windows could not read text from that picture.'))
@@ -37,6 +37,7 @@ function runOcr(file: string): Promise<OcrLine[]> {
         resolve(Array.isArray(v) ? v : [v])
       } catch { reject(new Error('Windows could not read text from that picture.')) }
     })
+    lowerPriority(child.pid)
   })
 }
 

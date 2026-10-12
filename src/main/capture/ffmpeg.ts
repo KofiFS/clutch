@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { execFile } from 'node:child_process'
+import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Encoder } from '../../shared/types'
@@ -18,13 +19,23 @@ export function ffprobePath(): string {
   return p === 'ffmpeg' ? 'ffprobe' : p.replace(/ffmpeg\.exe$/i, 'ffprobe.exe')
 }
 
+/**
+ * Background work (exports, Discord copies, thumbnails, previews, game detection, text reading)
+ * runs below normal priority so a game always wins the CPU. The live recording is left at normal:
+ * if a busy game starved the capture, clips would drop frames.
+ */
+export function lowerPriority(pid: number | undefined) {
+  if (!pid) return
+  try { os.setPriority(pid, os.constants.priority.PRIORITY_BELOW_NORMAL) } catch { /* process already gone */ }
+}
+
 export function run(
   bin: string,
   args: string[],
   opts: { timeoutMs?: number } = {}
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    execFile(
+    const child = execFile(
       bin,
       args,
       { windowsHide: true, maxBuffer: 64 * 1024 * 1024, timeout: opts.timeoutMs ?? 60_000 },
@@ -33,6 +44,7 @@ export function run(
         resolve({ code, stdout: String(stdout), stderr: String(stderr) })
       }
     )
+    lowerPriority(child.pid)
   })
 }
 

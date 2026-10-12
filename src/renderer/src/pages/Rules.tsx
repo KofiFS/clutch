@@ -15,7 +15,7 @@ const PRESETS = [
 ]
 
 export default function Rules() {
-  const { settings, save, status, setPage } = useStore()
+  const { settings, save, status, setPage, account, signIn } = useStore()
   if (!settings) return null
   const v = settings.vision
   const vo = settings.voice
@@ -24,6 +24,8 @@ export default function Rules() {
   const hy = settings.hype
   const setHype = (patch: Partial<typeof hy>) => save({ hype: { ...hy, ...patch } })
   const hasKey = !!settings.ai.anthropicApiKey
+  const viaAccount = !hasKey && account.signedIn
+  const visionLimit = account.plan?.features.visionChecksPerDay
 
   return (
     <div className="space-y-6">
@@ -74,15 +76,26 @@ export default function Rules() {
       <Section
         title="Watch the screen for moments"
         icon={<Eye size={16} />}
-        desc="Describe in plain English what you want clipped: kills, goals, wins. A screenshot is checked every few seconds and a clip is saved when the on-screen evidence matches. When this is off, Clutch takes no screenshots at all."
+        desc="Describe in plain English what you want clipped: kills, goals, wins. Clutch watches for big changes on screen and loud moments on your PC, and only then asks the AI whether it matches your rules. Calm stretches cost nothing."
         right={<div className="flex items-center gap-3"><Badge tone="accent"><Sparkles size={11} /> Optional AI</Badge><Toggle size="lg" checked={v.enabled} onChange={(enabled) => void setVision({ enabled })} label={v.enabled ? 'On' : 'Off'} /></div>}
       >
-        {!hasKey && (
-          <div className="card-2 p-3 text-sm flex items-center gap-3 border-warn/40">
-            <span className="flex-1">This needs an Anthropic API key. It stays on your PC; screenshots are only sent while this trigger is on.</span>
-            <button className="btn-sm" onClick={() => setPage('settings')}>Add key</button>
-          </div>
-        )}
+        {/* Plain statement of what leaves the PC, and where to. */}
+        <div className="card-2 p-3.5 text-sm flex items-start gap-3">
+          <Eye size={16} className="text-ink-3 mt-0.5 shrink-0" />
+          <span className="flex-1 text-ink-2 leading-relaxed">
+            {hasKey
+              ? 'While this is on, small screenshots of your game (about 1024 px wide) are sent to Anthropic with your own API key, only at the moments Clutch flags. Nothing is sent while it is off.'
+              : viaAccount
+                ? `While this is on, small screenshots of your game are sent through your Clutch account to Anthropic, only at the moments Clutch flags${visionLimit ? `, up to ${visionLimit} checks a day` : ''}. They are not stored. Nothing is sent while it is off.`
+                : 'This uses AI in the cloud, so it needs a Clutch account (free daily checks) or your own Anthropic API key. Nothing is sent while it is off.'}
+          </span>
+          {!hasKey && !viaAccount && (
+            <span className="flex gap-2 shrink-0">
+              <button className="btn-sm" onClick={() => signIn('Sign in to use screen watching with your free daily checks.')}>Sign in</button>
+              <button className="btn-sm" onClick={() => setPage('settings')}>Add key</button>
+            </span>
+          )}
+        </div>
         <Field label="Your rules">
           <textarea className="textarea min-h-28" value={v.rules} onChange={(e) => void setVision({ rules: e.target.value })} />
         </Field>
@@ -91,10 +104,15 @@ export default function Rules() {
           {PRESETS.map((p) => <button key={p.name} className="chip h-7 px-2.5 hover:border-accent/60 hover:text-ink transition-colors" onClick={() => void setVision({ rules: p.text })}>{p.name}</button>)}
         </div>
         <div className="grid grid-cols-2 gap-5">
-          <Slider label="Check every" value={v.intervalSeconds} min={2} max={15} step={1} format={(n) => `${n}s`} onChange={(intervalSeconds) => void setVision({ intervalSeconds })} hint="Shorter catches more but costs more API calls. 3s is a good default." />
+          <Slider label="Look every" value={v.intervalSeconds} min={2} max={15} step={1} format={(n) => `${n}s`} onChange={(intervalSeconds) => void setVision({ intervalSeconds })} hint={`Clutch looks this often on your PC, for free. The AI is only asked when something happens, at most ${v.maxPerMinute || 6} times a minute.`} />
           <Slider label="Minimum confidence" value={v.minConfidence} min={0.3} max={0.95} step={0.05} format={(n) => `${Math.round(n * 100)}%`} onChange={(minConfidence) => void setVision({ minConfidence })} hint="Raise it if you get clips of nothing; lower it if it misses moments." />
         </div>
-        {v.enabled && status.running && <p className="text-xs text-ink-3">Last check: {status.visionLastVerdict ?? 'waiting for the first frame'}</p>}
+        {v.enabled && status.running && (
+          <p className="text-xs text-ink-3">
+            Last check: {status.visionLastVerdict ?? 'waiting for something to happen'}
+            {status.vision && ` · ${status.vision.checks} AI check${status.vision.checks === 1 ? '' : 's'}, ${status.vision.skipped} calm moment${status.vision.skipped === 1 ? '' : 's'} skipped for free`}
+          </p>
+        )}
       </Section>
 
       <Section title="Which games" icon={<Gamepad2 size={16} />} desc="Pick from what's running now or games you've already clipped. The hotkey always works.">

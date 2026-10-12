@@ -1,3 +1,4 @@
+import { lowerPriority } from './ffmpeg'
 import { app, nativeImage } from 'electron'
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
@@ -94,6 +95,7 @@ class ForegroundWatcher {
     const loop = `while ($true) { $line = [Console]::In.ReadLine(); if ($line -eq $null) { break }; $parts = $line.Split(' '); $rid = $parts[0]; if ($parts[1] -eq 'apps') { ${PS_APPS} } else { $req = 'q ' + $parts[2]; $out='|||False'; ${query} }; [Console]::Out.WriteLine($rid + [char]9 + $out); [Console]::Out.Flush() }`
     const script = [addType, "$ErrorActionPreference='SilentlyContinue'", PS_INIT, loop].join(NL)
     const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true })
+    lowerPriority(proc.pid)
     this.proc = proc
     this.buf = ''
     proc.stdout.setEncoding('utf8')

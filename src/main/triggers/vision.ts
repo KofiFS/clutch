@@ -15,6 +15,7 @@ const Verdict = z.object({
   secondsAgo: z.number().min(0).max(20)
 })
 export type VisionVerdict = z.infer<typeof Verdict>
+export type CloudJudge = (req: { prev: string; frame: string; rules: string; game: string }) => Promise<VisionVerdict | null>
 
 const SYSTEM = `You watch gameplay screenshots for a clip-recording tool. The user wrote rules in plain English describing which moments they want saved as clips and which to ignore.
 
@@ -31,7 +32,11 @@ export class VisionJudge {
   private prev: Buffer | null = null
   private busy = false
 
-  constructor(apiKey: string, private model: string) {
+  /**
+   * `cloud` judges through the Clutch account (daily limit) for people without their own key.
+   * The user's own key wins when both exist.
+   */
+  constructor(apiKey: string, private model: string, private cloud: CloudJudge | null = null) {
     try {
       // A key from Settings wins; otherwise the SDK's own lookup (ANTHROPIC_API_KEY, `ant auth login` profile).
       this.client = apiKey ? new Anthropic({ apiKey }) : process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? new Anthropic() : null
@@ -41,20 +46,32 @@ export class VisionJudge {
   }
 
   get ready() {
-    return !!this.client
+    return !!this.client || !!this.cloud
+  }
+
+  /** Where screenshots go while screen watching is on (shown to the user). */
+  get destination(): 'anthropic' | 'clutch' | null {
+    return this.client ? 'anthropic' : this.cloud ? 'clutch' : null
   }
 
   reset() {
     this.prev = null
   }
 
+  /** Keep a frame as "previous" without asking the AI (calm moments are skipped for free). */
+  remember(frame: Buffer) {
+    this.prev = frame
+  }
+
   async judge(frame: Buffer, rules: VisionRules, game: string): Promise<VisionVerdict | null> {
-    if (!this.client || this.busy) return null
+    if (!this.ready || this.busy) return null
     const prev = this.prev
     this.prev = frame
     if (!prev) return null
     this.busy = true
     try {
+      if (!this.client && this.cloud) return await this.cloud({ prev: prev.toString('base64'), frame: frame.toString('base64'), rules: rules.rules, game })
+      if (!this.client) return null
       const content: Anthropic.ContentBlockParam[] = [
         { type: 'text', text: `Game: ${game || 'unknown'}\n\nUser rules:\n${rules.rules}\n\nPrevious frame:` },
         { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: prev.toString('base64') } },

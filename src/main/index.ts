@@ -133,7 +133,8 @@ function showWindow(page?: string) {
 /** Windows login item; only meaningful for the installed app (dev runs would register bare electron.exe). */
 function applyLaunchAtLogin(on: boolean) {
   if (!app.isPackaged || process.platform !== 'win32') return
-  app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] })
+  // A fixed name, so the uninstaller can find and remove it (build/installer.nsh).
+  app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'], name: 'Clutch' })
 }
 
 function send(channel: string, payload: unknown) {
@@ -190,7 +191,24 @@ app.whenReady().then(async () => {
   scheduler = new UploadScheduler(recorder.library, () => settings.get(), dataDir)
   account = new CloudAccount(() => settings.get().cloud.serverUrl)
   scheduler.gate = () => ({ ok: account.state.signedIn, slots: account.state.plan?.features.autoUploadSlots ?? 1 })
-  account.on('change', (st) => { send('account', st); tray?.refresh() })
+  // Screen watching through the account when there is no personal AI key.
+  let quotaNoticeDay = ''
+  const syncCloudVision = () => {
+    if (!account.state.signedIn) return recorder.setCloudVision(null)
+    recorder.setCloudVision(async (req) => {
+      try {
+        const r = await account.api<{ verdict: import('./triggers/vision').VisionVerdict | null; left: number }>('POST', '/api/vision/judge', req)
+        return r.verdict
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        const day = new Date().toDateString()
+        if (/today's screen checks/i.test(msg) && quotaNoticeDay !== day) { quotaNoticeDay = day; recorder.log('info', msg) }
+        else if (!/today's screen checks/i.test(msg)) recorder.log('error', `Screen check failed: ${msg}`)
+        return null
+      }
+    })
+  }
+  account.on('change', (st) => { send('account', st); tray?.refresh(); syncCloudVision() })
   void account.refresh()
   setInterval(() => void account.refresh(), 10 * 60_000).unref()
   let lastServer = settings.get().cloud.serverUrl
@@ -295,7 +313,7 @@ app.whenReady().then(async () => {
   settings.onChange((s) => {
     if (hotkeySig(s) !== hotkeySignature) registerHotkey(s)
     tray?.refresh()
-    if (app.isPackaged && app.getLoginItemSettings({ args: ['--hidden'] }).openAtLogin !== s.app.launchAtLogin) applyLaunchAtLogin(s.app.launchAtLogin)
+    if (app.isPackaged && app.getLoginItemSettings({ args: ['--hidden'], name: 'Clutch' } as Electron.LoginItemSettingsOptions).openAtLogin !== s.app.launchAtLogin) applyLaunchAtLogin(s.app.launchAtLogin)
     // Keep the window in sync with changes made by the main process (YouTube connect, tray, etc.).
     send('settings-changed', s)
     mini?.send('settings-changed', s)
@@ -361,6 +379,10 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('system:testOverlay', () => overlay?.show('Clipped!', 'This is how it looks in game', 'clip'))
   ipcMain.handle('system:canAcrylic', () => canAcrylic)
+  ipcMain.handle('system:diskFree', async (_e, dir: string) => {
+    const { freeBytes } = await import('./library/janitor')
+    return freeBytes(dir || settings.get().capture.outputDir)
+  })
   ipcMain.handle('account:get', () => account.state)
   ipcMain.handle('account:refresh', async () => { await account.refresh(); return account.state })
   ipcMain.handle('account:providers', () => account.providers())

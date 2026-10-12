@@ -76,6 +76,10 @@ export interface VisionRules {
   intervalSeconds: number
   /** 0..1 - minimum confidence to save a clip. */
   minConfidence: number
+  /** Model for screen watching. A small, cheap one: it runs many times per session. */
+  model: string
+  /** Most AI checks per minute (the cheap on-PC checks decide which moments get one). */
+  maxPerMinute: number
 }
 
 export interface VoiceRules {
@@ -160,6 +164,8 @@ export interface PlanFeatures {
   adFree: boolean
   /** Smart reads of settings screenshots per day (cloud AI). */
   smartReadsPerDay?: number
+  /** Screen-watching AI checks per day through the account. */
+  visionChecksPerDay?: number
 }
 
 export interface AccountState {
@@ -200,6 +206,7 @@ export const PLAN_ROWS: { label: string; free: string; pro: string }[] = [
   { label: 'Auto-upload schedule', free: '1 time a day', pro: 'Up to 12 a day' },
   { label: 'Back up favorites to the cloud', free: '—', pro: 'Automatic' },
   { label: 'Smart import of Medal / OBS screenshots', free: '3 a day', pro: '25 a day' },
+  { label: 'Screen watching ("clip my kills") without an AI key', free: '60 checks a day', pro: '800 a day' },
   { label: 'Sponsored cards', free: 'Optional (can turn off)', pro: 'Never' }
 ]
 
@@ -236,7 +243,18 @@ export interface AppBehavior {
   miniWidgetAnchor?: { right: number; top: number } | null
 }
 
+/** Keeps the clip library from filling the drive. 0 turns a rule off. Favorites are never deleted. */
+export interface StorageRules {
+  /** Keep all clips (trash included) under this many GB; the oldest non-favorites go first. */
+  maxGB: number
+  /** Delete non-favorite clips older than this many days. */
+  deleteAfterDays: number
+  /** Warn when the clips or recording drive has less than this much free space (GB). */
+  lowSpaceGB: number
+}
+
 export interface Settings {
+  storage: StorageRules
   capture: CaptureSettings
   vision: VisionRules
   voice: VoiceRules
@@ -351,6 +369,10 @@ export interface BufferStatus {
   talking?: boolean
   /** Set while a long (full-session) recording is running. */
   longRecording?: { since: string; bookmarks: number; game: string }
+  /** Screen watching: where frames go, and how many AI checks ran vs. were skipped this session. */
+  vision?: { destination: 'anthropic' | 'clutch' | null; checks: number; skipped: number }
+  /** Set when the clips or recording drive is low on space. */
+  lowDisk?: { freeGB: number; critical: boolean }
   /** Set while recording is paused (nothing captured, buffer kept). `since` then counts recorded time only. */
   paused?: { since: string }
 }
@@ -384,7 +406,8 @@ export const DEFAULT_SETTINGS: Settings = {
     preSeconds: 20,
     postSeconds: 5,
     monitorIndex: 0,
-    area: { kind: 'monitor' },
+    // Only the game's window, so browsers, chats and notifications elsewhere stay out of clips.
+    area: { kind: 'game' },
     audioSources: [],
     micDevice: '',
     systemAudio: true,
@@ -401,7 +424,9 @@ export const DEFAULT_SETTINGS: Settings = {
     enabled: false,
     rules: 'Clip kills, multi-kills, goals, clutch moments and funny physics. Do not clip menus, lobbies, loading screens or scoreboards.',
     intervalSeconds: 3,
-    minConfidence: 0.7
+    minConfidence: 0.7,
+    model: 'claude-haiku-5-5',
+    maxPerMinute: 6
   },
   voice: {
     enabled: false,
@@ -447,6 +472,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cloud: { serverUrl: OFFICIAL_CLOUD_URL, backupFavorites: true },
   blocklist: [],
   extraGames: [],
+  storage: { maxGB: 100, deleteAfterDays: 0, lowSpaceGB: 10 },
   allowlist: [],
   profiles: {},
   startBufferOnLaunch: false

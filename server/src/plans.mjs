@@ -20,7 +20,8 @@ export const PLANS = {
       autoUploadSlots: 1,
       autoUploadPlatforms: 1,
       adFree: false,
-      smartReadsPerDay: 3
+      smartReadsPerDay: 3,
+      visionChecksPerDay: 60
     }
   },
   pro: {
@@ -36,7 +37,8 @@ export const PLANS = {
       autoUploadSlots: 12,
       autoUploadPlatforms: 3,
       adFree: true,
-      smartReadsPerDay: 25
+      smartReadsPerDay: 25,
+      visionChecksPerDay: 800
     }
   }
 }

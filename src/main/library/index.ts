@@ -55,6 +55,11 @@ export class Library extends EventEmitter<{ change: [] }> {
     return this.clips.filter((c) => !c.trashedAt)
   }
 
+  /** Every clip including the trash (for storage limits). */
+  everything(): Clip[] {
+    return [...this.clips]
+  }
+
   get(id: string): Clip | undefined {
     return this.clips.find((c) => c.id === id)
   }

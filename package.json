@@ -41,7 +41,8 @@
     "appId": "com.iceko.clutch",
     "productName": "Clutch",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**",
@@ -87,7 +88,8 @@
       "createDesktopShortcut": true,
       "shortcutName": "Clutch",
       "artifactName": "Clutch-Setup-${version}.${ext}",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
     },
     "publish": null
   },

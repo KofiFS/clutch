@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CaptureSettings, Encoder } from '../../shared/types'
-import { detectEncoders, ffmpegPath, ffprobePath, run } from './ffmpeg'
+import { detectEncoders, ffmpegPath, ffprobePath, lowerPriority, run } from './ffmpeg'
 
 const SEG_SECONDS = 2
 const SYS_RATE = 48000
@@ -71,6 +71,10 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
   constructor(workDir: string) {
     super()
     this.segDir = path.join(workDir, 'buffer')
+  }
+
+  get segmentDir() {
+    return this.segDir
   }
 
   async start(settings: CaptureSettings, display: { width: number; height: number; crop?: { x: number; y: number; w: number; h: number } }, opts: { restart?: boolean } = {}): Promise<void> {
@@ -257,6 +261,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     try {
       const jpeg = await new Promise<Buffer | null>((resolve) => {
         const p = spawn(ffmpegPath(), ['-hide_banner', '-loglevel', 'error', '-skip_frame', 'nokey', '-i', seg.file, '-frames:v', '1', '-vf', 'scale=1024:-2:out_range=full,format=yuvj420p', '-q:v', '6', '-f', 'image2pipe', '-c:v', 'mjpeg', 'pipe:1'], { windowsHide: true })
+        lowerPriority(p.pid)
         const chunks: Buffer[] = []
         p.stdout.on('data', (c: Buffer) => chunks.push(c))
         p.on('error', () => resolve(null))

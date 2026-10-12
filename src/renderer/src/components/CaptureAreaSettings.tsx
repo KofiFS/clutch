@@ -153,9 +153,15 @@ export function CaptureAreaSettings() {
 export function StorageSettings() {
   const { settings, save, libraryVersion } = useStore()
   const [stats, setStats] = useState<{ count: number; bytes: number; seconds: number; trashed: number } | null>(null)
+  const [free, setFree] = useState<number | null>(null)
   useEffect(() => { void window.cf.library.stats().then(setStats) }, [libraryVersion])
+  useEffect(() => { void window.cf.system.diskFree(settings?.capture.outputDir).then(setFree) }, [libraryVersion, settings?.capture.outputDir])
   if (!settings) return null
   const c = settings.capture
+  const st = settings.storage ?? { maxGB: 100, deleteAfterDays: 0, lowSpaceGB: 10 }
+  const setRules = (patch: Partial<typeof st>) => void save({ storage: { ...st, ...patch } })
+  const CAPS = [0, 25, 50, 100, 200, 500, 1000]
+  const DAYS = [0, 7, 14, 30, 60, 90, 180]
   return (
     <Section title="Storage" icon={<HardDrive size={16} />} desc="Where Clutch saves your clips and long recordings. Each game gets its own folder.">
       <Field label="Save clips to" hint="New clips go here. Clips you already have stay where they are and still show in your library.">
@@ -174,6 +180,23 @@ export function StorageSettings() {
             </div>
           ))}
         </div>
+      )}
+      <div className="grid grid-cols-2 gap-6">
+        <Field label="Keep clips under" hint={st.maxGB ? `When clips (and the trash) go over ${st.maxGB >= 1000 ? '1 TB' : `${st.maxGB} GB`}, the oldest ones go first. Favorites are never deleted.` : 'No limit. Clips stay until you delete them.'}>
+          <select className="input" value={st.maxGB} onChange={(e) => setRules({ maxGB: Number(e.target.value) })} aria-label="Storage limit">
+            {CAPS.map((n) => <option key={n} value={n}>{n === 0 ? 'No limit' : n >= 1000 ? '1 TB' : `${n} GB`}</option>)}
+          </select>
+        </Field>
+        <Field label="Delete clips older than" hint={st.deleteAfterDays ? `Clips you haven't favorited are deleted after ${st.deleteAfterDays} days.` : 'Off. Favorite a clip to keep it forever either way.'}>
+          <select className="input" value={st.deleteAfterDays} onChange={(e) => setRules({ deleteAfterDays: Number(e.target.value) })} aria-label="Delete old clips">
+            {DAYS.map((n) => <option key={n} value={n}>{n === 0 ? 'Never' : `${n} days`}</option>)}
+          </select>
+        </Field>
+      </div>
+      {free !== null && (
+        <p className={`text-xs ${free < st.lowSpaceGB * 1024 ** 3 ? 'text-warn' : 'text-ink-3'}`}>
+          {fmtBytes(free)} free on this drive.{free < st.lowSpaceGB * 1024 ** 3 ? ' Running low: Clutch pauses recording before the drive fills up.' : ''}
+        </p>
       )}
     </Section>
   )

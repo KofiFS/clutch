@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import type { BufferStatus, HealthItem, Settings } from '../shared/types'
 import { detectEncoders, ffmpegPath, listAudioDevices, run } from './capture/ffmpeg'
 
@@ -57,21 +58,34 @@ export async function healthCheck(settings: Settings, status: BufferStatus): Pro
   })
   const dir = settings.capture.outputDir
   let free = ''
+  let freeGB = 0
   try {
     fs.mkdirSync(dir, { recursive: true })
     const st = fs.statfsSync(dir)
-    free = `${Math.round((st.bavail * st.bsize) / 1e9)} GB free`
+    freeGB = (st.bavail * st.bsize) / 1024 ** 3
+    free = `${Math.round(freeGB)} GB free`
   } catch {
     free = ''
+    freeGB = 0
   }
-  items.push({ id: 'disk', label: 'Clip folder', ok: !!free, detail: free ? `${dir} - ${free}` : `Cannot write to ${dir}.`, fix: 'settings' })
+  const low = free && freeGB < (settings.storage?.lowSpaceGB ?? 10)
+  items.push({ id: 'disk', label: 'Clip folder', ok: !free ? false : low ? 'warn' : true, detail: !free ? `Cannot write to ${dir}.` : low ? `${dir} - only ${free}. Set a storage limit under Settings → Storage.` : `${dir} - ${free}`, fix: 'settings' })
   items.push({
     id: 'ai',
     label: 'AI moment detection',
-    ok: settings.vision.enabled ? !!(settings.ai.anthropicApiKey || process.env.ANTHROPIC_API_KEY) : 'warn',
-    detail: !settings.vision.enabled ? 'Off. Turn it on under "What to clip" to auto-clip kills and goals.' : settings.ai.anthropicApiKey || process.env.ANTHROPIC_API_KEY ? `On, checking every ${settings.vision.intervalSeconds}s with ${settings.ai.model}.` : 'Enabled but no API key. Add one under Settings → AI.',
+    ok: settings.vision.enabled ? !!(settings.ai.anthropicApiKey || process.env.ANTHROPIC_API_KEY || status.vision) : 'warn',
+    detail: !settings.vision.enabled
+      ? 'Off. Turn it on under "What to clip" to auto-clip kills and goals.'
+      : settings.ai.anthropicApiKey || process.env.ANTHROPIC_API_KEY
+        ? `On with your key (${settings.vision.model}), only at moments flagged on your PC, at most ${settings.vision.maxPerMinute}/min.`
+        : status.vision ? 'On through your Clutch account (daily checks).' : 'On, but it needs a Clutch account or an Anthropic API key.',
     fix: settings.vision.enabled ? 'settings' : 'rules'
   })
+  // Medal grabs F8 for its clip key; two apps can't share a global hotkey.
+  const medalInstalled = fs.existsSync(path.join(process.env.LOCALAPPDATA ?? '', 'Medal'))
+  if (medalInstalled && settings.capture.clipHotkey.trim().toUpperCase() === 'F8') {
+    items.push({ id: 'medal', label: 'Hotkey shared with Medal', ok: 'warn', detail: 'Medal also uses F8 to clip. Close Medal, or pick another key (F9 is free) under Settings → Hotkey.', fix: 'settings' })
+  }
   items.push({
     id: 'youtube',
     label: 'YouTube',

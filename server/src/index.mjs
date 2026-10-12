@@ -13,6 +13,7 @@ import { billingEnabled, checkoutUrl, handleEvent, portalUrl, verifyWebhook } fr
 import { devLoginPage, messagePage, sharePage } from './pages.mjs'
 import { users as usersDb } from './db.mjs'
 import { countSmartRead, smartRead, smartReadEnabled, smartReadsLeft } from './importer.mjs'
+import { countVisionCheck, judgeFrames, visionChecksLeft, visionEnabled } from './vision.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const adsFile = path.resolve(here, '..', 'ads.json')
@@ -212,6 +213,24 @@ async function route(req, res) {
     } catch (e) {
       console.error('[smart-read]', e?.message ?? e)
       throw new HttpError(502, 'The smart read failed. Try again in a minute.')
+    }
+  }
+
+  // --- screen watching for accounts without their own AI key (the app gates and rate-limits first) ---
+  if (req.method === 'POST' && p === '/api/vision/judge') {
+    const user = authed(req)
+    if (!visionEnabled()) throw new HttpError(503, 'Screen watching is not set up on this server.')
+    const { key, left } = visionChecksLeft(user.id, planOf(user).features.visionChecksPerDay ?? 60)
+    if (!left) throw new HttpError(429, "You have used today's screen checks. They reset tomorrow, or go Pro for more.")
+    let body
+    try { body = JSON.parse(await readBody(req, 4 * 1024 * 1024)) } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(400, 'Invalid JSON') }
+    if (typeof body.prev !== 'string' || typeof body.frame !== 'string' || body.prev.length > 1_500_000 || body.frame.length > 1_500_000) throw new HttpError(400, 'Send two JPEG frames')
+    countVisionCheck(key)
+    try {
+      return send(res, 200, { verdict: await judgeFrames(body), left: left - 1 })
+    } catch (e) {
+      console.error('[vision]', e?.message ?? e)
+      throw new HttpError(502, 'The screen check failed. It will try again on the next moment.')
     }
   }
 

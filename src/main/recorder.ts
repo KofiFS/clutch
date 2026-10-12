@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { screen } from 'electron'
+import { nativeImage, screen } from 'electron'
 import path from 'node:path'
 import type { ActivityEvent, BufferStatus, CaptureSettings, Clip, GameInfo, Settings, TriggerSource } from '../shared/types'
 import { ReplayBuffer } from './capture/replayBuffer'
@@ -7,10 +7,11 @@ import { listAudioDevices } from './capture/ffmpeg'
 import { cachedIcon, gameNameFrom, getForegroundApp, getWindowRect, listRunningApps, looksLikeGame, toGameInfo } from './capture/foreground'
 import { Library } from './library'
 import type { SettingsStore } from './settings'
-import { VisionJudge } from './triggers/vision'
+import { VisionJudge, type CloudJudge } from './triggers/vision'
 import { VoiceDetector } from './triggers/voice'
 import { HypeDetector } from './triggers/hype'
 import { suggestTitle } from './triggers/titler'
+import { enforceStorage, freeBytes } from './library/janitor'
 
 const VISION_COOLDOWN_MS = 20_000
 const fmtDuration = (ms: number) => { const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)} min ${s % 60}s` }
@@ -44,6 +45,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   game: GameInfo = { name: 'Desktop', process: '' }
   private gameTimer: NodeJS.Timeout | null = null
   private scanTimer: NodeJS.Timeout | null = null
+  private storageTimer: NodeJS.Timeout | null = null
+  private diskTimer: NodeJS.Timeout | null = null
+  private lastLowDiskNotice = 0
   private scanning = false
   private statusTimer: NodeJS.Timeout | null = null
   private lastVisionClipAt = 0
@@ -62,6 +66,12 @@ export class Recorder extends EventEmitter<RecorderEvents> {
    * recording carries on and clips stay filed under the game, like Medal.
    */
   private stickyGame: { info: GameInfo; pid: number } | null = null
+  private cloudJudge: CloudJudge | null = null
+  private watching = false
+  private lastLoudAt = 0
+  private lastLum: Float32Array | null = null
+  private visionCalls: number[] = []
+  private visionStats = { checks: 0, skipped: 0 }
   /** Last app in front other than the desktop or Clutch. */
   lastApp: GameInfo | null = null
 
@@ -71,7 +81,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.library = new Library(dataDir)
     this.voice = new VoiceDetector(settings.get().voice)
     this.hype = new HypeDetector(settings.get().hype)
-    this.vision = new VisionJudge(settings.get().ai.anthropicApiKey, settings.get().ai.model)
+    this.vision = this.makeVision(settings.get())
 
     this.buffer.on('status', (st) => {
       this.status = {
@@ -94,8 +104,10 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.emit('levels', { micDb, sysDb: this.status.systemLevelDb ?? -100, sources })
       this.voice.onLevels(micDb, this.status.systemLevelDb ?? -100, 'mic')
       this.hype.feed('mic', micDb)
+      if (micDb > -24) this.lastLoudAt = Date.now()
     })
     this.hype.on('hype', ({ at, peakDb, source }) => {
+      this.lastLoudAt = Date.now()
       if (!this.status.running) return
       this.log('hype', `Hype spike on ${source === 'mic' ? 'your mic' : 'voice chat'} (${Math.round(peakDb)} dB)`)
       const c = this.effectiveCapture()
@@ -113,7 +125,6 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       void this.clipRange(seg.startMs - 2000, seg.endMs + 1000, 'voice', { event: seg.source === 'mic' ? 'You talking' : 'Voice chat' })
     })
 
-    let lastVision = { enabled: settings.get().vision.enabled && this.vision.ready, interval: settings.get().vision.intervalSeconds }
     let lastAudio = JSON.stringify(settings.get().capture.audioSources)
     let lastLists = JSON.stringify([settings.get().extraGames, settings.get().allowlist, settings.get().blocklist])
     settings.onChange((s) => {
@@ -135,21 +146,22 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       }
       this.voice.setRules(s.voice)
       this.hype.setRules(s.hype)
-      this.vision = new VisionJudge(s.ai.anthropicApiKey, s.ai.model)
-      // Snapshots run beside the recording (not inside FFmpeg), so this applies without a restart.
-      // Without an AI key there is nothing to send them to, so none are taken.
-      const watching = s.vision.enabled && this.vision.ready
-      const changed = lastVision.enabled !== watching || (watching && lastVision.interval !== s.vision.intervalSeconds)
-      lastVision = { enabled: watching, interval: s.vision.intervalSeconds }
-      this.buffer.snapshotIntervalSec = s.vision.intervalSeconds
-      if (changed) {
-        this.buffer.setSnapshots(watching)
-        if (this.status.running) this.log('info', watching ? 'Screen watching on' : 'Screen watching off')
-      }
+      this.vision = this.makeVision(s)
+      this.applyWatching()
     })
     this.buffer.snapshotIntervalSec = settings.get().vision.intervalSeconds
     this.buffer.snapshotsEnabled = settings.get().vision.enabled && this.vision.ready
-    if (settings.get().vision.enabled && !this.vision.ready) this.log('info', 'Screen watching is on but has no AI key, so it is paused. Add a key under Settings → AI.')
+    this.watching = this.buffer.snapshotsEnabled
+    if (settings.get().vision.enabled && !this.vision.ready) this.log('info', 'Screen watching is on but needs an AI key or a Clutch account, so it is paused.')
+
+    // Storage rules: on start, every 10 min, after each clip, and when the rules change.
+    setTimeout(() => this.tidyStorage(), 5000)
+    this.storageTimer = setInterval(() => this.tidyStorage(), 10 * 60_000)
+    this.on('clip', () => this.tidyStorage())
+    let lastRules = JSON.stringify(settings.get().storage)
+    settings.onChange((s) => { const r = JSON.stringify(s.storage); if (r !== lastRules) { lastRules = r; this.tidyStorage() } })
+    this.diskTimer = setInterval(() => void this.checkDisk(), 60_000)
+    void this.checkDisk()
 
     this.gameTimer = setInterval(() => void this.pollGame(), GAME_POLL_MS)
     void this.pollGame().then(() => this.findAlreadyRunning())
@@ -331,6 +343,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.buffer.pushSystemAudio(pcm, levelDb)
     this.lastSysAudioAt = Date.now()
     this.status.systemLevelDb = levelDb
+    if (levelDb > -14) this.lastLoudAt = Date.now()
     this.voice.onLevels(this.status.micLevelDb ?? -100, levelDb, 'sys')
     this.emitLevelsThrottled()
     this.hype.feed('system', levelDb)
@@ -394,6 +407,44 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   }
 
   /** Hotkey / manual: clip the last `preSeconds` plus the next `postSeconds`. */
+  /** Apply the storage rules (size cap, delete after N days). Favorites are never touched. */
+  tidyStorage() {
+    const rules = this.settings.get().storage
+    if (!rules) return
+    const r = enforceStorage(this.library, rules)
+    if (!r.removed) return
+    const mb = Math.round(r.freedBytes / 1024 ** 2)
+    const freed = mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`
+    const why = r.reason === 'size' ? `to stay under ${rules.maxGB} GB` : `older than ${rules.deleteAfterDays} days`
+    this.log('info', `Removed ${r.removed} old clip${r.removed === 1 ? '' : 's'} ${why} (${freed} freed, favorites kept)`)
+  }
+
+  /**
+   * Warn when the clips or recording drive runs low; pause recording before it fills completely,
+   * since a full drive breaks the recording and can upset Windows.
+   */
+  private async checkDisk() {
+    const s = this.settings.get()
+    const dirs = [s.capture.outputDir, this.buffer.segmentDir].filter(Boolean)
+    const free = Math.min(...dirs.map((d) => freeBytes(d) ?? Infinity))
+    if (!Number.isFinite(free)) return
+    const gb = free / 1024 ** 3
+    const was = this.status.lowDisk
+    const low = gb < (s.storage?.lowSpaceGB ?? 10)
+    const critical = gb < 1.5
+    this.status.lowDisk = low ? { freeGB: Math.round(gb * 10) / 10, critical } : undefined
+    if (low && Date.now() - this.lastLowDiskNotice > 60 * 60_000) {
+      this.lastLowDiskNotice = Date.now()
+      this.log('error', `Only ${gb.toFixed(1)} GB free on the clips drive. Lower the storage limit or delete some clips.`)
+    }
+    if (critical && this.status.running && !this.paused) {
+      this.log('error', 'Drive almost full - recording paused so it does not fill up')
+      this.emit('notice', { title: 'Recording paused', sub: `Only ${gb.toFixed(1)} GB free on the clips drive`, kind: 'error' })
+      await this.pause()
+    }
+    if (!!was !== !!this.status.lowDisk || was?.critical !== this.status.lowDisk?.critical) this.pushStatus()
+  }
+
   /** Look through open windows for a game that is running but not in front (e.g. started before Clutch). */
   private async findAlreadyRunning() {
     const s = this.settings.get()
@@ -629,10 +680,65 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     }
   }
 
+  private makeVision(s: Settings) {
+    return new VisionJudge(s.ai.anthropicApiKey, s.vision.model || 'claude-haiku-5-5', this.cloudJudge)
+  }
+
+  /** Screen watching through the Clutch account (set by the main process while signed in). */
+  setCloudVision(fn: CloudJudge | null) {
+    this.cloudJudge = fn
+    this.vision = this.makeVision(this.settings.get())
+    this.applyWatching()
+  }
+
+  /** Turn snapshots on/off to match "enabled and has somewhere to send them". No restart needed. */
+  private applyWatching() {
+    const s = this.settings.get()
+    const watching = s.vision.enabled && this.vision.ready
+    this.buffer.snapshotIntervalSec = s.vision.intervalSeconds
+    this.status.vision = watching ? { destination: this.vision.destination, checks: this.visionStats.checks, skipped: this.visionStats.skipped } : undefined
+    if (watching === this.watching) return
+    this.watching = watching
+    this.buffer.setSnapshots(watching)
+    if (this.status.running) this.log('info', watching ? `Screen watching on (${this.vision.destination === 'clutch' ? 'through your Clutch account' : 'with your AI key'})` : 'Screen watching off')
+    this.pushStatus()
+  }
+
+  /** How different this frame is from the last one (0 = same, 1 = completely different). Tiny and on-PC. */
+  private frameChange(jpeg: Buffer): number {
+    const img = nativeImage.createFromBuffer(jpeg)
+    if (img.isEmpty()) return 1
+    const px = img.resize({ width: 32, height: 18, quality: 'good' }).toBitmap()
+    const lum = new Float32Array(32 * 18)
+    for (let i = 0; i < lum.length; i++) lum[i] = 0.114 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.299 * px[i * 4 + 2]
+    const prev = this.lastLum
+    this.lastLum = lum
+    if (!prev) return 1
+    let diff = 0
+    for (let i = 0; i < lum.length; i++) diff += Math.abs(lum[i] - prev[i])
+    return diff / lum.length / 255
+  }
+
   private async onSnapshot(jpeg: Buffer) {
     const s = this.settings.get()
     if (!s.vision.enabled || !this.vision.ready || this.status.recordingBlocked) return
-    if (Date.now() - this.lastVisionClipAt < VISION_COOLDOWN_MS) return
+    if (Date.now() - this.lastVisionClipAt < VISION_COOLDOWN_MS) { this.vision.remember(jpeg); this.frameChange(jpeg); return }
+    // Cheap checks first: only ask the AI when the screen changed a lot or the audio got loud.
+    // Menus, walking around and lobbies cost nothing.
+    const change = this.frameChange(jpeg)
+    const loud = Date.now() - this.lastLoudAt < 5000
+    const now = Date.now()
+    this.visionCalls = this.visionCalls.filter((t) => now - t < 60_000)
+    const underCap = this.visionCalls.length < Math.max(1, s.vision.maxPerMinute || 6)
+    if (!(change > 0.06 || loud) || !underCap) {
+      this.vision.remember(jpeg)
+      this.visionStats.skipped++
+      if (this.status.vision) this.status.vision = { ...this.status.vision, skipped: this.visionStats.skipped }
+      return
+    }
+    this.visionCalls.push(now)
+    this.visionStats.checks++
+    if (this.status.vision) this.status.vision = { ...this.status.vision, checks: this.visionStats.checks }
     try {
       const verdict = await this.vision.judge(jpeg, s.vision, this.game.name)
       if (!verdict) return
@@ -655,6 +761,8 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   dispose() {
     if (this.gameTimer) clearInterval(this.gameTimer)
     if (this.scanTimer) clearInterval(this.scanTimer)
+    if (this.storageTimer) clearInterval(this.storageTimer)
+    if (this.diskTimer) clearInterval(this.diskTimer)
     if (this.statusTimer) clearInterval(this.statusTimer)
   }
 }

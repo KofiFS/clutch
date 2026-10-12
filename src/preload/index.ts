@@ -36,6 +36,7 @@ const api = {
     testHotkey: (accel: string): Promise<boolean> => ipcRenderer.invoke('system:testHotkey', accel),
     testOverlay: () => ipcRenderer.invoke('system:testOverlay'),
     canAcrylic: (): Promise<boolean> => ipcRenderer.invoke('system:canAcrylic'),
+    diskFree: (dir?: string): Promise<number | null> => ipcRenderer.invoke('system:diskFree', dir ?? ''),
     canLaunchAtLogin: (): Promise<boolean> => ipcRenderer.invoke('system:canLaunchAtLogin')
   },
   account: {

@@ -36,7 +36,9 @@ export const config = {
   stripe: { secretKey: env('STRIPE_SECRET_KEY'), priceId: env('STRIPE_PRICE_ID'), webhookSecret: env('STRIPE_WEBHOOK_SECRET') },
   // Optional: smart read of settings screenshots for people importing from Medal/OBS/NVIDIA.
   anthropicKey: env('ANTHROPIC_API_KEY'),
-  smartReadModel: env('SMART_READ_MODEL', 'claude-opus-5-5')
+  smartReadModel: env('SMART_READ_MODEL', 'claude-opus-5-5'),
+  // Screen watching runs often, so it uses a small, cheap model.
+  visionModel: env('VISION_MODEL', 'claude-haiku-5-5')
 }
 
 if (!config.jwtSecret || config.jwtSecret.startsWith('change-me')) {
