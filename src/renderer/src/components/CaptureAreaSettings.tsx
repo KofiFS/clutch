@@ -121,7 +121,7 @@ export function CaptureAreaSettings() {
         {/* Live preview of what gets recorded */}
         <div>
           <span className="label">Preview</span>
-          <div className="relative rounded-xl overflow-hidden border border-white/12" style={{ aspectRatio: `${W} / ${H}`, background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 8px, transparent 8px 16px), rgba(0,10,25,0.5)' }}>
+          <div className="relative rounded-xl overflow-hidden border border-white/12" style={{ aspectRatio: `${W} / ${H}`, background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 8px, transparent 8px 16px), rgba(0,0,0,0.5)' }}>
             {box ? (
               <div className="absolute rounded-md border-2 border-accent shadow-[0_0_18px_rgba(79,227,255,0.6)]" style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, background: 'rgba(79,227,255,0.12)' }} />
             ) : (

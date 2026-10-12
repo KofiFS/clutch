@@ -51,7 +51,7 @@ export function PickGame({ className = '' }: { className?: string }) {
         <Gamepad2 size={16} /> Pick a game
       </button>
       {open && (
-        <div className="absolute z-40 left-0 top-12 w-[360px] rounded-2xl border border-white/10 shadow-[var(--shadow-pop)] p-2" style={{ background: 'linear-gradient(160deg, rgba(22,30,48,0.98), rgba(10,14,24,0.98))' }} role="menu">
+        <div className="absolute z-40 left-0 top-12 w-[360px] rounded-2xl border border-white/10 shadow-[var(--shadow-pop)] p-2" style={{ background: 'linear-gradient(160deg, rgba(30,30,35,0.98), rgba(17,17,20,0.98))' }} role="menu">
           <div className="flex items-center justify-between px-2 pt-1 pb-2">
             <span className="text-xs text-ink-3">Open windows. Pick the game to record.</span>
             <button className="btn-ghost h-7 w-7 grid place-items-center rounded-lg" onClick={() => void load()} aria-label="Refresh list"><RefreshCw size={13} /></button>

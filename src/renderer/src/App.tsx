@@ -74,7 +74,7 @@ function TitleBar({ live, onSearch }: { live: boolean; onSearch: () => void }) {
       <button
         onClick={onSearch}
         className="no-drag ml-auto mr-[150px] flex items-center gap-2 h-8 w-[300px] max-w-[30vw] px-3 rounded-full text-[13px] text-ink-3 hover:text-ink-2 border border-white/12 transition-colors"
-        style={{ background: 'rgba(0,10,25,0.4)', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.4)' }}
+        style={{ background: 'rgba(0,0,0,0.4)', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.4)' }}
         aria-label="Search (Ctrl+K)"
       >
         <Search size={14} />
@@ -101,7 +101,7 @@ function RailButton({ label, hint, onClick, active, variant, disabled, children 
         {children}
       </button>
       <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50 whitespace-nowrap opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 transition-all duration-150">
-        <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[13px] font-medium border border-white/15 backdrop-blur-xl shadow-[var(--shadow-pop)]" style={{ background: "rgba(8,14,28,0.92)", boxShadow: "inset 0 1px 0.5px rgba(255,255,255,0.25), 0 12px 30px -10px rgba(0,0,0,0.9)" }}>
+        <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[13px] font-medium border border-white/15 backdrop-blur-xl shadow-[var(--shadow-pop)]" style={{ background: "rgba(20,20,24,0.92)", boxShadow: "inset 0 1px 0.5px rgba(255,255,255,0.25), 0 12px 30px -10px rgba(0,0,0,0.9)" }}>
           {label}
           {hint && <span className="text-ink-3 text-xs font-normal">{hint}</span>}
         </span>
@@ -163,7 +163,7 @@ function Shell() {
             >
               <span className={`relative grid place-items-center w-9 h-9 rounded-full ${paused ? 'ring-2 ring-warn' : live ? 'ring-2 ring-live shadow-[0_0_14px_-2px_#4fe3ff]' : status.starting ? 'ring-2 ring-warn' : 'ring-1 ring-white/15'}`}>
                 {game && !game.isGame ? <Monitor size={18} className="text-ink-2" /> : game ? <GameIcon src={game.icon ? `cf://file/${encodeURIComponent(game.icon.replace(/\\/g, '/'))}` : undefined} name={game.name} size={22} /> : <span className="w-2 h-2 rounded-full bg-ink-3" />}
-                {status.recordingBlocked && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-warn ring-2 ring-[#060a14]" />}
+                {status.recordingBlocked && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-warn ring-2 ring-[#101013]" />}
               </span>
             </RailButton>
             {live || paused ? (

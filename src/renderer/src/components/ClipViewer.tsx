@@ -177,7 +177,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
 
   return (
     <div className="fixed inset-0 z-[100] bg-[rgba(2,8,20,0.5)] backdrop-blur-xl flex items-center justify-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" className="card hud w-full max-w-[1320px] h-full max-h-[880px] flex overflow-hidden shadow-[var(--shadow-pop)] pop-in" style={{ background: 'linear-gradient(160deg, rgba(14,22,40,0.92), rgba(6,10,20,0.94))' }}>
+      <div role="dialog" aria-modal="true" className="card hud w-full max-w-[1320px] h-full max-h-[880px] flex overflow-hidden shadow-[var(--shadow-pop)] pop-in" style={{ background: 'linear-gradient(160deg, rgba(24,24,28,0.92), rgba(14,14,17,0.94))' }}>
         {/* Player column */}
         <div ref={player} className="clip-player relative z-[2] flex-1 min-w-0 flex flex-col">
           <div className="flex items-center gap-2 px-5 h-14 border-b border-white/10">
@@ -217,13 +217,13 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
             <div className="relative group/tl">
             {hover && (
               <div className="absolute -top-9 z-20 pointer-events-none -translate-x-1/2" style={{ left: hover.x }}>
-                <span className="font-hud text-[11px] tabular px-2 py-1 rounded-lg border border-white/15" style={{ background: 'rgba(8,14,28,0.92)', boxShadow: '0 8px 20px -8px rgba(0,0,0,0.9)' }}>{fmtTime(hover.t)}</span>
+                <span className="font-hud text-[11px] tabular px-2 py-1 rounded-lg border border-white/15" style={{ background: 'rgba(20,20,24,0.92)', boxShadow: '0 8px 20px -8px rgba(0,0,0,0.9)' }}>{fmtTime(hover.t)}</span>
               </div>
             )}
             <div
               ref={timeline}
               className={`relative h-11 rounded-full overflow-hidden select-none touch-none border border-white/12 ${dragging.current === 'seek' ? 'cursor-grabbing' : 'cursor-pointer'}`}
-              style={{ background: 'rgba(0,10,25,0.45)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)' }}
+              style={{ background: 'rgba(0,0,0,0.45)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)' }}
               onPointerDown={(e) => onPointerDown(e, 'seek')}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}

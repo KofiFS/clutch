@@ -165,7 +165,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   let idx = -1
   return (
     <div className="fixed inset-0 z-[150] bg-[rgba(2,6,16,0.45)] backdrop-blur-sm flex items-start justify-center pt-[12vh] px-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-label="Search" className="w-full max-w-[640px] rounded-[22px] overflow-hidden border border-white/15 pop-in" style={{ background: 'rgba(8,14,28,0.94)', boxShadow: 'inset 0 1px 0.5px rgba(255,255,255,0.3), 0 40px 90px -20px rgba(0,0,0,0.95), 0 0 40px -16px rgba(79,227,255,0.6)' }}>
+      <div role="dialog" aria-label="Search" className="w-full max-w-[640px] rounded-[22px] overflow-hidden border border-white/15 pop-in" style={{ background: 'rgba(20,20,24,0.94)', boxShadow: 'inset 0 1px 0.5px rgba(255,255,255,0.3), 0 40px 90px -20px rgba(0,0,0,0.95), 0 0 40px -16px rgba(79,227,255,0.6)' }}>
         <div className="flex items-center gap-3 px-5 h-14 border-b border-white/10">
           <Search size={18} className="text-accent shrink-0" />
           <input

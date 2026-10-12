@@ -46,7 +46,7 @@ let account: CloudAccount
 let quitting = false
 let currentMaterial: 'acrylic' | 'none' = 'none'
 
-const TITLEBAR = { color: '#00000000', symbolColor: '#b4c3d9', height: 44 }
+const TITLEBAR = { color: '#00000000', symbolColor: '#c3c5cc', height: 44 }
 
 /** Windows 11 22H2+ (build 22621) supports acrylic window backgrounds. */
 const canAcrylic = process.platform === 'win32' && Number(process.getSystemVersion().split('.')[2] ?? 0) >= 22621
@@ -58,7 +58,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 660,
     show: false,
-    backgroundColor: settings.get().app.windowGlass && canAcrylic ? '#00000000' : '#03050b',
+    backgroundColor: settings.get().app.windowGlass && canAcrylic ? '#00000000' : '#0c0c0f',
     backgroundMaterial: settings.get().app.windowGlass && canAcrylic ? 'acrylic' : 'none',
     titleBarStyle: 'hidden',
     titleBarOverlay: TITLEBAR,
@@ -304,7 +304,7 @@ app.whenReady().then(async () => {
       const want = s.app.windowGlass ? 'acrylic' : 'none'
       if (want !== currentMaterial) {
         currentMaterial = want
-        win.setBackgroundColor(s.app.windowGlass ? '#00000000' : '#03050b')
+        win.setBackgroundColor(s.app.windowGlass ? '#00000000' : '#0c0c0f')
         win.setBackgroundMaterial(want)
       }
     }

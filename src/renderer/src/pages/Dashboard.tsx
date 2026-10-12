@@ -37,7 +37,6 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Hero */}
       <section className="card hud relative overflow-hidden p-7">
-        <div className="absolute inset-0 pointer-events-none" style={{ background: status.running ? 'radial-gradient(700px 260px at 12% 0%, rgba(79,227,255,0.16), transparent)' : 'radial-gradient(700px 260px at 12% 0%, rgba(155,123,255,0.16), transparent)' }} />
         <div className="relative z-[2] flex items-center gap-8">
           <RingGauge
             value={status.running ? Math.min(status.bufferedSeconds ?? 0, settings.capture.bufferSeconds) : 0}

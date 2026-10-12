@@ -30,7 +30,7 @@ export function Toggle({ checked, onChange, label, hint, size = 'md', ariaLabel 
         onClick={() => onChange(!checked)}
         className={`mt-0.5 relative ${w} rounded-full transition-all duration-300 shrink-0 border ${checked ? 'border-white/40' : 'border-white/12 group-hover:border-white/25'}`}
         style={{
-          background: checked ? 'linear-gradient(180deg, #8ff1ff, #2bb8ff)' : 'rgba(0,10,25,0.45)',
+          background: checked ? 'linear-gradient(180deg, #8ff1ff, #2bb8ff)' : 'rgba(0,0,0,0.45)',
           boxShadow: checked ? 'inset 0 1px 1px rgba(255,255,255,0.8), 0 0 18px -2px rgba(79,227,255,0.8)' : 'inset 0 1px 3px rgba(0,0,0,0.5)'
         }}
       >
@@ -71,7 +71,7 @@ export function Slider({ value, min, max, step = 1, onChange, format, label, hin
 export function Segmented<T extends string | number>({ value, options, onChange, ariaLabel }: { value: T; options: { value: T; label: ReactNode; title?: string }[]; onChange: (v: T) => void; ariaLabel?: string }) {
   const idx = Math.max(0, options.findIndex((o) => o.value === value))
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="relative inline-flex p-1 rounded-full w-full border border-white/10" style={{ background: 'rgba(0,10,25,0.4)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.45)' }}>
+    <div role="radiogroup" aria-label={ariaLabel} className="relative inline-flex p-1 rounded-full w-full border border-white/10" style={{ background: 'rgba(0,0,0,0.4)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.45)' }}>
       {/* Sliding glass lens behind the selected option */}
       <span
         aria-hidden
@@ -252,7 +252,7 @@ export function Modal({ open, onClose, children, width = 'max-w-2xl', title, hid
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[100] bg-[rgba(2,6,16,0.55)] backdrop-blur-md grid place-items-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" className={`card w-full ${width} max-h-[calc(100vh-48px)] overflow-hidden flex flex-col pop-in shadow-[var(--shadow-pop)]`} style={{ background: 'linear-gradient(160deg, rgba(14,22,40,0.94), rgba(6,10,20,0.96))' }}>
+      <div role="dialog" aria-modal="true" className={`card w-full ${width} max-h-[calc(100vh-48px)] overflow-hidden flex flex-col pop-in shadow-[var(--shadow-pop)]`} style={{ background: 'linear-gradient(160deg, rgba(24,24,28,0.94), rgba(14,14,17,0.96))' }}>
         {!hideHeader && (
           <div className="flex items-center justify-between px-5 h-14 border-b border-line shrink-0">
             <div className="font-semibold truncate">{title}</div>
