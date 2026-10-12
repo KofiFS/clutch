@@ -54,6 +54,12 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   private long: { startMs: number; bookmarks: number[]; game: GameInfo; pauses: { from: number; to: number }[] } | null = null
   /** Set while the user has paused recording: FFmpeg is stopped but the buffer and long recording are kept. */
   private paused: { at: number; elapsedMs: number; auto: boolean } | null = null
+  /**
+   * The last game seen in front, kept while its process runs. With a game on one half of an
+   * ultrawide and a browser or Discord on the other, focus moves away from the game all the time;
+   * recording carries on and clips stay filed under the game, like Medal.
+   */
+  private stickyGame: { info: GameInfo; pid: number } | null = null
 
   constructor(private settings: SettingsStore, dataDir: string) {
     super()
@@ -318,8 +324,14 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
   private async pollGame() {
     const s = this.settings.get()
-    const fg = await getForegroundApp()
-    const info = await toGameInfo(fg, s.allowlist)
+    const fg = await getForegroundApp(this.stickyGame?.pid ?? 0)
+    let info = await toGameInfo(fg, s.allowlist)
+    if (info.isGame && fg.pid) this.stickyGame = { info, pid: fg.pid }
+    else if (this.stickyGame) {
+      // Another (non-game) window has focus: stay on the game while it is still running.
+      if (fg.watchedAlive) info = this.stickyGame.info
+      else this.stickyGame = null
+    }
     const changed = info.process !== this.game.process
     if (changed) {
       this.game = info

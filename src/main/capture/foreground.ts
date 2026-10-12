@@ -46,7 +46,8 @@ const PS_FOREGROUND = [
   '$style=[FG]::GetWindowLong($h,-16); $caption=(($style -band 0x00C00000) -eq 0x00C00000)',
   '$fs = (($r.R-$r.L) -ge $sw) -and (($r.B-$r.T) -ge $sh) -and (-not $caption)',
   'if ($procId -ne $lastPid) { $lastPid=$procId; $lastPath=[FG]::PathOf($procId); if ($lastPath) { $lastName=[IO.Path]::GetFileNameWithoutExtension($lastPath) } else { $lastName=(Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName } }',
-  'if ($procId -and $lastName) { $title=([FG]::TitleOf($h)) -replace "[|]"," "; Write-Output ("{0}|{1}|{2}|{3}" -f $lastName, $title, $lastPath, $fs) }'
+  '$watch=0; [void][int]::TryParse(($req -replace "^q\\s*",""), [ref]$watch); $alive=$false; if ($watch -gt 0) { $alive=[bool](Get-Process -Id $watch -ErrorAction SilentlyContinue) }',
+  'if ($procId -and $lastName) { $title=([FG]::TitleOf($h)) -replace "[|]"," "; Write-Output ("{0}|{1}|{2}|{3}|{4}|{5}" -f $lastName, $title, $lastPath, $fs, $procId, $alive) } else { Write-Output ("|||False|0|{0}" -f $alive) }'
 ].join('\n')
 
 /** Runs once when the helper starts: the cache that keeps repeat questions from touching the game. */
@@ -57,11 +58,14 @@ export interface ForegroundApp {
   title: string
   exePath: string
   fullscreen: boolean
+  pid?: number
+  /** Whether the process id passed to the query is still running. */
+  watchedAlive?: boolean
 }
 
 function parseLine(line: string): ForegroundApp {
-  const [process = '', title = '', exePath = '', fs = ''] = line.split('|')
-  return { process: process.trim(), title: title.trim(), exePath: exePath.trim(), fullscreen: fs.trim() === 'True' }
+  const [process = '', title = '', exePath = '', fs = '', pid = '0', alive = ''] = line.split('|')
+  return { process: process.trim(), title: title.trim(), exePath: exePath.trim(), fullscreen: fs.trim() === 'True', pid: Number(pid) || 0, watchedAlive: alive.trim() === 'True' }
 }
 
 /**
@@ -103,7 +107,8 @@ class ForegroundWatcher {
     proc.stdin.on('error', () => undefined)
   }
 
-  query(): Promise<ForegroundApp> {
+  /** What's in front; with `watchPid`, also whether that process is still running. */
+  query(watchPid = 0): Promise<ForegroundApp> {
     this.ensure()
     return new Promise((resolve) => {
       const t = setTimeout(() => {
@@ -114,7 +119,7 @@ class ForegroundWatcher {
       }, 8000)
       const done = (line: string) => { clearTimeout(t); resolve(parseLine(line)) }
       this.waiting.push(done)
-      this.proc?.stdin.write('q' + String.fromCharCode(10))
+      this.proc?.stdin.write(`q ${watchPid}` + String.fromCharCode(10))
     })
   }
 
@@ -126,8 +131,8 @@ class ForegroundWatcher {
 
 const watcher = new ForegroundWatcher()
 
-export function getForegroundApp(): Promise<ForegroundApp> {
-  return watcher.query()
+export function getForegroundApp(watchPid = 0): Promise<ForegroundApp> {
+  return watcher.query(watchPid)
 }
 
 export function disposeForegroundWatcher() {
