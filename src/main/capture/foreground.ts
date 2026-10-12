@@ -7,28 +7,50 @@ import type { GameInfo } from '../../shared/types'
 const LINE_BREAK = /\r?\n/
 
 // Foreground window: process name, title, exe path, and whether it covers the whole monitor.
+/*
+ * Asked every few seconds while a game runs, so it must not touch the game itself.
+ * Anti-cheat (Easy Anti-Cheat, BattlEye, Vanguard) watches for other programs opening the game's
+ * process. The old version read the path through Get-Process(...).Path, which opens the process
+ * with memory-read rights and walks its modules; in Fortnite that lined up with the picture
+ * freezing every 3 s. Now:
+ *  - the path comes from QueryFullProcessImageName with PROCESS_QUERY_LIMITED_INFORMATION, the
+ *    one right anti-cheat allows, and only when the window in front changes;
+ *  - the title is read from the foreground window itself;
+ *  - the process name comes from that path (or the system process list, which opens nothing).
+ */
 const PS_FOREGROUND = [
   'Add-Type @"',
-  'using System; using System.Runtime.InteropServices;',
+  'using System; using System.Text; using System.Runtime.InteropServices;',
   'public struct RECT { public int L; public int T; public int R; public int B; }',
   'public class FG {',
   '  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
   '  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
   '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);',
-  '  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint f);',
   '  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);',
   '  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);',
+  '  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);',
+  '  [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);',
+  '  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);',
+  '  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern bool QueryFullProcessImageName(IntPtr h, uint flags, StringBuilder s, ref uint n);',
+  '  public static string PathOf(uint pid) {',
+  '    IntPtr h = OpenProcess(0x1000, false, pid); if (h == IntPtr.Zero) return "";',
+  '    try { var sb = new StringBuilder(1024); uint n = 1024; return QueryFullProcessImageName(h, 0, sb, ref n) ? sb.ToString() : ""; } finally { CloseHandle(h); }',
+  '  }',
+  '  public static string TitleOf(IntPtr h) { var sb = new StringBuilder(512); GetWindowText(h, sb, 512); return sb.ToString(); }',
   '}',
   '"@',
-  '$h=[FG]::GetForegroundWindow(); $procId=0; [FG]::GetWindowThreadProcessId($h,[ref]$procId) | Out-Null',
+  '$h=[FG]::GetForegroundWindow(); $procId=[uint32]0; [FG]::GetWindowThreadProcessId($h,[ref]$procId) | Out-Null',
   '$r=New-Object RECT; [FG]::GetWindowRect($h,[ref]$r) | Out-Null',
   '$sw=[FG]::GetSystemMetrics(0); $sh=[FG]::GetSystemMetrics(1)',
   // Fullscreen = covers the screen AND has no title bar. Maximized apps cover the screen too but keep WS_CAPTION.
   '$style=[FG]::GetWindowLong($h,-16); $caption=(($style -band 0x00C00000) -eq 0x00C00000)',
   '$fs = (($r.R-$r.L) -ge $sw) -and (($r.B-$r.T) -ge $sh) -and (-not $caption)',
-  '$p=Get-Process -Id $procId -ErrorAction SilentlyContinue',
-  'if ($p) { $path=""; try { $path=$p.Path } catch {}; Write-Output ("{0}|{1}|{2}|{3}" -f $p.ProcessName, $p.MainWindowTitle, $path, $fs) }'
+  'if ($procId -ne $lastPid) { $lastPid=$procId; $lastPath=[FG]::PathOf($procId); if ($lastPath) { $lastName=[IO.Path]::GetFileNameWithoutExtension($lastPath) } else { $lastName=(Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName } }',
+  'if ($procId -and $lastName) { $title=([FG]::TitleOf($h)) -replace "[|]"," "; Write-Output ("{0}|{1}|{2}|{3}" -f $lastName, $title, $lastPath, $fs) }'
 ].join('\n')
+
+/** Runs once when the helper starts: the cache that keeps repeat questions from touching the game. */
+const PS_INIT = '$lastPid=0; $lastPath=""; $lastName=""'
 
 export interface ForegroundApp {
   process: string
@@ -60,7 +82,7 @@ class ForegroundWatcher {
     const addType = body.slice(0, body.indexOf('"@') + 1).join(NL)
     const query = body.slice(body.indexOf('"@') + 1).join('; ').replace(/Write-Output \(/g, '$out = (')
     const loop = `while ($true) { $req = [Console]::In.ReadLine(); if ($req -eq $null) { break }; $out='|||False'; ${query}; [Console]::Out.WriteLine($out); [Console]::Out.Flush() }`
-    const script = [addType, "$ErrorActionPreference='SilentlyContinue'", loop].join(NL)
+    const script = [addType, "$ErrorActionPreference='SilentlyContinue'", PS_INIT, loop].join(NL)
     const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true })
     this.proc = proc
     this.buf = ''

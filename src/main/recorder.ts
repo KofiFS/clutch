@@ -103,7 +103,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       void this.clipRange(seg.startMs - 2000, seg.endMs + 1000, 'voice', { event: seg.source === 'mic' ? 'You talking' : 'Voice chat' })
     })
 
-    let lastVision = { enabled: settings.get().vision.enabled, interval: settings.get().vision.intervalSeconds }
+    let lastVision = { enabled: settings.get().vision.enabled && this.vision.ready, interval: settings.get().vision.intervalSeconds }
     let lastAudio = JSON.stringify(settings.get().capture.audioSources)
     settings.onChange((s) => {
       const audio = JSON.stringify(s.capture.audioSources)
@@ -118,19 +118,20 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.voice.setRules(s.voice)
       this.hype.setRules(s.hype)
       this.vision = new VisionJudge(s.ai.anthropicApiKey, s.ai.model)
+      // Snapshots run beside the recording (not inside FFmpeg), so this applies without a restart.
+      // Without an AI key there is nothing to send them to, so none are taken.
+      const watching = s.vision.enabled && this.vision.ready
+      const changed = lastVision.enabled !== watching || (watching && lastVision.interval !== s.vision.intervalSeconds)
+      lastVision = { enabled: watching, interval: s.vision.intervalSeconds }
       this.buffer.snapshotIntervalSec = s.vision.intervalSeconds
-      this.buffer.snapshotsEnabled = s.vision.enabled
-      // The screenshot branch is part of the FFmpeg graph, so toggling AI watching needs a quick restart.
-      const changed = lastVision.enabled !== s.vision.enabled || (s.vision.enabled && lastVision.interval !== s.vision.intervalSeconds)
-      lastVision = { enabled: s.vision.enabled, interval: s.vision.intervalSeconds }
-      if (changed && this.status.running && !this.starting) {
-        this.log('info', s.vision.enabled ? 'Turning on screen watching…' : 'Screen watching off - recording with no extra overhead')
-        const auto = this.autoStarted
-        void this.buffer.stop().then(() => this.start(auto ? 'auto' : 'manual'))
+      if (changed) {
+        this.buffer.setSnapshots(watching)
+        if (this.status.running) this.log('info', watching ? 'Screen watching on' : 'Screen watching off')
       }
     })
     this.buffer.snapshotIntervalSec = settings.get().vision.intervalSeconds
-    this.buffer.snapshotsEnabled = settings.get().vision.enabled
+    this.buffer.snapshotsEnabled = settings.get().vision.enabled && this.vision.ready
+    if (settings.get().vision.enabled && !this.vision.ready) this.log('info', 'Screen watching is on but has no AI key, so it is paused. Add a key under Settings → AI.')
 
     this.gameTimer = setInterval(() => void this.pollGame(), GAME_POLL_MS)
     void this.pollGame()

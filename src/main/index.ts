@@ -64,7 +64,9 @@ function createWindow() {
     titleBarOverlay: TITLEBAR,
     icon: nativeImage.createFromPath(iconPath(256)),
     title: 'Clutch',
-    webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true }
+    // Not throttled while hidden in the tray: this window captures system audio, and a throttled
+    // page delivers it in bursts.
+    webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true, backgroundThrottling: false }
   })
   win.once('ready-to-show', () => { if (!settings.get().app.startMinimized && !launchedHidden) win?.show() })
   win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })

@@ -124,7 +124,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
         }
       }
     })
-    proc.stdout!.on('data', (chunk: Buffer) => this.onSnapshotData(chunk))
+    proc.stdout!.resume()
     proc.on('exit', (code) => {
       const wasRunning = this.running
       this.cleanup()
@@ -138,6 +138,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     proc.stdin!.on('error', () => {})
 
     if (settings.systemAudio) this.startSystemAudioPump()
+    this.startSnapshots()
     this.pruneTimer = setInterval(() => this.prune(), 5000)
     this.emit('status', { running: true, encoder: this.encoder, resolution: this.resolution, fps: settings.fps })
   }
@@ -190,6 +191,8 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     this.proc = null
     if (this.pruneTimer) clearInterval(this.pruneTimer)
     if (this.sysTimer) clearInterval(this.sysTimer)
+    if (this.snapTimer) clearInterval(this.snapTimer)
+    this.snapTimer = null
     this.pruneTimer = this.sysTimer = null
     this.sysQueue = []
   }
@@ -226,6 +229,44 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       let queued = this.sysQueue.reduce((n, b) => n + b.length, 0)
       while (queued > SYS_BYTES_PER_SEC / 2 && this.sysQueue.length) queued -= this.sysQueue.shift()!.length
     }, 50)
+  }
+
+  private snapTimer: NodeJS.Timeout | null = null
+  private snapBusy = false
+
+  /**
+   * AI screen watching: every few seconds, decode the first frame (a keyframe) of the newest finished
+   * segment, downscaled, in its own process. Costs one tiny decode per interval and can never slow
+   * the recording. Frames are ~2-4 s behind live, which the clip's lead-in time already covers.
+   */
+  private startSnapshots() {
+    if (this.snapTimer) clearInterval(this.snapTimer)
+    this.snapTimer = null
+    if (!this.snapshotsEnabled) return
+    this.snapTimer = setInterval(() => void this.takeSnapshot(), Math.max(1, this.snapshotIntervalSec) * 1000)
+  }
+
+  private lastSnapSeg = -1
+  private async takeSnapshot() {
+    if (this.snapBusy || !this.running) return
+    const segs = this.listSegments()
+    const seg = segs[segs.length - 2]
+    if (!seg || seg.n === this.lastSnapSeg) return
+    this.snapBusy = true
+    this.lastSnapSeg = seg.n
+    try {
+      const jpeg = await new Promise<Buffer | null>((resolve) => {
+        const p = spawn(ffmpegPath(), ['-hide_banner', '-loglevel', 'error', '-skip_frame', 'nokey', '-i', seg.file, '-frames:v', '1', '-vf', 'scale=1024:-2:out_range=full,format=yuvj420p', '-q:v', '6', '-f', 'image2pipe', '-c:v', 'mjpeg', 'pipe:1'], { windowsHide: true })
+        const chunks: Buffer[] = []
+        p.stdout.on('data', (c: Buffer) => chunks.push(c))
+        p.on('error', () => resolve(null))
+        p.on('exit', (code) => resolve(code === 0 && chunks.length ? Buffer.concat(chunks) : null))
+        setTimeout(() => p.kill(), 8000)
+      })
+      if (jpeg && this.running) this.emit('snapshot', jpeg)
+    } finally {
+      this.snapBusy = false
+    }
   }
 
   private onSnapshotData(chunk: Buffer) {
@@ -273,18 +314,20 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     const parts: string[] = []
     // The screenshot branch only exists while AI watching is on; otherwise frames never leave the GPU
     // for anything but the encoder (NVENC at native res) and FFmpeg does no extra work.
-    const snaps = this.snapshotsEnabled
-    const split = snaps ? ',split=2[v][vsnap0]' : '[v]'
+    // Only the recording comes out of this process. Snapshots for AI screen watching used to be a
+    // second, 1-frame-per-3-s output here, and FFmpeg's scheduler held the video back to keep the two
+    // outputs in step: clips froze for ~1 s every 3 s. They now come from finished segments instead
+    // (see startSnapshots), in a separate short-lived process.
     if (useD3D) {
-      parts.push(`${grab},setpts=PTS-STARTPTS${split}`)
+      parts.push(`${grab},setpts=PTS-STARTPTS[v]`)
     } else {
-      parts.push(`${grab},setpts=PTS-STARTPTS,hwdownload,format=bgra${scaleExpr},format=nv12${split}`)
+      parts.push(`${grab},setpts=PTS-STARTPTS,hwdownload,format=bgra${scaleExpr},format=nv12[v]`)
     }
-    if (snaps) {
-      // Drop to a low frame rate *before* pulling frames off the GPU.
-      const snapDownload = useD3D ? ',hwdownload,format=bgra' : ''
-      parts.push(`[vsnap0]fps=1/${this.snapshotIntervalSec}${snapDownload},scale=1024:-2,format=yuvj420p[snap]`)
-    }
+
+    // Video and audio get separate filter graphs. FFmpeg runs each graph on its own thread; in one
+    // shared graph, system audio arriving in bursts (the pipe from a hidden window) stalled the
+    // thread, ddagrab wasn't pulled, and clips froze for ~1 s every few seconds while sound played on.
+    const videoParts = parts.splice(0)
 
     // Audio: each source -> resample/stereo/volume -> split into (mix, [own track], [meter]).
     // Every input is rebased to t=0 so dshow's clock (seconds since boot) lines up with the pipe and video.
@@ -310,7 +353,8 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     } else if (mixLabels.length === 1) {
       audioOut = mixLabels[0]
     }
-    args.push('-filter_complex', parts.join(';'))
+    args.push('-filter_complex', videoParts.join(';'))
+    if (parts.length) args.push('-filter_complex', parts.join(';'))
 
     // Segment output
     args.push('-map', '[v]')
@@ -329,8 +373,6 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     }
     args.push('-f', 'segment', '-segment_time', String(SEG_SECONDS), '-segment_format', 'mpegts', '-reset_timestamps', '1', '-segment_start_number', String(this.segStartNumber), path.join(this.segDir, 'seg%06d.ts'))
 
-    // Snapshot output (stdout)
-    if (snaps) args.push('-map', '[snap]', '-c:v', 'mjpeg', '-q:v', '6', '-f', 'image2pipe', 'pipe:1')
 
     return args
   }
@@ -383,6 +425,12 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     try { fs.unlinkSync(outFile) } catch { /* none yet */ }
     const r = await run(ffmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-i', seg.file, '-frames:v', '1', '-vf', 'scale=480:-2:out_range=full,format=yuvj420p', '-q:v', '5', outFile], { timeoutMs: 8000 })
     return { ok: r.code === 0 && fs.existsSync(outFile), atMs: seg.birthMs }
+  }
+
+  /** Turn AI snapshots on or off while recording. */
+  setSnapshots(on: boolean) {
+    this.snapshotsEnabled = on
+    if (this.running) this.startSnapshots()
   }
 
   /** Oldest moment still available in the buffer (wall-clock ms), or null if empty. */
