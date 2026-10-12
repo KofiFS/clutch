@@ -112,6 +112,14 @@ export async function exportEdit(clip: Clip, o: EditOptions, onProgress?: (stage
   return { file: outFile, title }
 }
 
+/** A plain H.264 MP4 copy that plays everywhere (for clips stored as AV1/HEVC), saved where the user chose. */
+export async function exportCompatible(clip: Clip, outFile: string, onProgress?: (f: number) => void): Promise<void> {
+  const info = await probe(clip.file)
+  const audio = await hasAudio(clip.file)
+  const filter = editFilter({ format: 'original', fit: 'crop', speed: 1, captions: false }, { w: info.width || clip.width, h: info.height || clip.height }, null, audio)
+  await runWithProgress(['-hide_banner', '-nostats', '-progress', 'pipe:1', '-y', '-i', clip.file, '-filter_complex', filter, '-map', '[v]', ...(audio ? ['-map', '[a]', '-c:a', 'aac', '-b:a', '192k'] : []), ...(await h264Args()), '-movflags', '+faststart', outFile], info.durationSec || clip.durationSec, onProgress)
+}
+
 /** Join clips in order into one video (scaled to the first clip's size, 60 fps). */
 export async function joinClips(clips: Clip[], onProgress?: (f: number) => void): Promise<ExportResult> {
   if (clips.length < 2) throw new Error('Pick at least two clips')

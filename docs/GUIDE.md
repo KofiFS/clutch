@@ -64,7 +64,8 @@ so it never shows up in clips.
 ## Keyboard shortcuts
 
 - Anywhere: `Ctrl+K` search · `Ctrl+1…5` switch pages.
-- Clip viewer: `Space`/`K` play · `←`/`→` 1 s (`Shift` 5 s) · `,`/`.` one frame · `I`/`O` trim in/out ·
+- Clip viewer: the timeline shows the clip's audio waveform; `↑`/`↓` or the slider change the volume.
+  `Space`/`K` play · `←`/`→` 1 s (`Shift` 5 s) · `,`/`.` one frame · `I`/`O` trim in/out ·
   `F` fullscreen (or double-click the video) · `T` hide/show the details panel · `L` favorite · `M` mute ·
   `[`/`]` previous/next · `Delete` trash · `Esc` close (or leave fullscreen). Drag the timeline to scrub.
 - Clips page: `/` search · `Ctrl+A` select all · `Delete` trash selection · `Shift+click` range select.
@@ -97,6 +98,14 @@ new clip. In Clips, select two or more clips and press **Join** to make one vide
 Settings → Storage: keep clips under a size (100 GB by default; the trash goes first, then the
 oldest clips) and optionally delete clips older than N days. Favorites are never deleted
 automatically. Clutch warns when the drive runs low and pauses recording before it fills.
+
+**Storage saver** (on by default, after 1 day): clips are re-saved as AV1 on your graphics card
+while Clutch isn't recording. On real gameplay that kept the same visible quality at about a
+quarter of the size. Sharing, Copy link, Discord and **Save as MP4** (clip viewer → Details) always
+give a normal H.264 MP4 that plays everywhere. Clips from before you turned it on are only shrunk
+when you press **Shrink my existing clips**. Re-saving replaces the file and can't be undone.
+
+Home shows how much space your clips use next to how much the drive has free.
 
 ## Clip of the day scoring
 

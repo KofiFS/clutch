@@ -12,6 +12,7 @@ export default function Dashboard() {
   const { status, activity, settings, libraryVersion, start, clipNow, setPage, openClip, game, loopbackError } = useStore()
   const [recent, setRecent] = useState<Clip[]>([])
   const [stats, setStats] = useState<{ count: number; bytes: number; seconds: number } | null>(null)
+  const [disk, setDisk] = useState<{ free: number; total: number } | null>(null)
   const [health, setHealth] = useState<HealthItem[]>([])
   const [best, setBest] = useState<{ clip: Clip; score: number } | null>(null)
   const [posting, setPosting] = useState(false)
@@ -19,6 +20,7 @@ export default function Dashboard() {
   useEffect(() => {
     void window.cf.library.query({ sort: 'newest' }).then((c) => setRecent(c.slice(0, 8)))
     void window.cf.library.stats().then(setStats)
+    void window.cf.system.diskInfo().then(setDisk)
     void window.cf.highlights.today().then(setBest)
   }, [libraryVersion])
   useEffect(() => { void window.cf.system.health().then(setHealth) }, [status.running, status.hotkeyRegistered, settings])
@@ -66,7 +68,7 @@ export default function Dashboard() {
                 ? `${status.resolution} · ${status.fps} FPS · ${String(status.encoder ?? '').toUpperCase()}`
                 : status.lastError ? 'The last recording stopped with an error. Details below.' : `HOTKEY ${settings.capture.clipHotkey || 'NOT SET'} · ${settings.capture.preSeconds}S BACK + ${settings.capture.postSeconds}S`}
             </p>
-            <div className="flex items-center gap-2.5 mt-6">
+            <div className="flex flex-wrap items-center gap-2.5 mt-6">
               {status.paused ? (
                 <button className="btn-primary px-6 h-11" onClick={() => void window.cf.buffer.togglePause()}>Resume recording</button>
               ) : status.running ? (
@@ -87,12 +89,28 @@ export default function Dashboard() {
           </div>
           {stats && (
             <div className="hidden xl:flex flex-col gap-2.5 shrink-0">
-              {[[stats.count, 'Clips'], [fmtDuration(stats.seconds), 'Recorded'], [fmtBytes(stats.bytes), 'On disk']].map(([v, l]) => (
-                <div key={String(l)} className="card-2 px-4 py-2.5 min-w-[150px] flex items-baseline justify-between gap-4">
+              {[[stats.count, 'Clips'], [fmtDuration(stats.seconds), 'Recorded']].map(([v, l]) => (
+                <div key={String(l)} className="card-2 px-4 py-2.5 min-w-[220px] flex items-baseline justify-between gap-4">
                   <div className="font-hud text-[9px] uppercase tracking-[0.18em] text-ink-3">{l}</div>
                   <div className="font-hud text-[15px] font-bold tabular">{v}</div>
                 </div>
               ))}
+              {/* What the clips take next to what the drive has left */}
+              <div className="card-2 px-4 py-2.5 min-w-[220px] space-y-1.5" title={disk ? `Clips: ${fmtBytes(stats.bytes)} · other files: ${fmtBytes(Math.max(0, disk.total - disk.free - stats.bytes))} · free: ${fmtBytes(disk.free)}` : undefined}>
+                <div className="flex items-baseline justify-between gap-4">
+                  <div className="font-hud text-[9px] uppercase tracking-[0.18em] text-ink-3">On disk</div>
+                  <div className="font-hud text-[15px] font-bold tabular">{fmtBytes(stats.bytes)}</div>
+                </div>
+                {disk && (
+                  <>
+                    <div className="h-1.5 rounded-full overflow-hidden flex bg-white/[0.06]" aria-hidden>
+                      <span className="h-full bg-accent" style={{ width: `${Math.max(1, (stats.bytes / disk.total) * 100)}%` }} />
+                      <span className="h-full bg-white/25" style={{ width: `${Math.max(0, ((disk.total - disk.free - stats.bytes) / disk.total) * 100)}%` }} />
+                    </div>
+                    <div className={`text-[11px] tabular ${disk.free < 10 * 1024 ** 3 ? 'text-warn' : 'text-ink-3'}`}>{fmtBytes(disk.free)} free of {fmtBytes(disk.total)}</div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -173,7 +191,7 @@ export default function Dashboard() {
             )}
           </Section>
 
-          <Section title="Live audio" icon={<Activity size={16} />} desc={status.running ? undefined : 'Meters move while recording.'}>
+          <Section title="Live audio" icon={<Activity size={16} />}>
             <div className="space-y-2.5">
               <LiveMeter source="mic" label="Mic" threshold={settings.voice.enabled && settings.voice.onMic ? settings.voice.thresholdDb : undefined} />
               <LiveMeter source="system" label="System" threshold={settings.voice.enabled && settings.voice.onSystemAudio ? settings.voice.thresholdDb : undefined} />

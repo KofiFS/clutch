@@ -5,8 +5,8 @@ import { fmtTime, useStore } from '../lib/store'
 import { useToast } from './Toasts'
 import { Segmented, Toggle } from './ui'
 
-export type EditState = Pick<EditOptions, 'format' | 'fit' | 'cropX' | 'cropY' | 'speed' | 'captions'>
-export const DEFAULT_EDIT: EditState = { format: 'original', fit: 'crop', cropX: 0.5, cropY: 0.5, speed: 1, captions: false }
+export type EditState = Pick<EditOptions, 'format' | 'fit' | 'cropX' | 'cropY' | 'speed' | 'captions'> & { volume: number }
+export const DEFAULT_EDIT: EditState = { format: 'original', fit: 'crop', cropX: 0.5, cropY: 0.5, speed: 1, captions: false, volume: 1 }
 
 /** Target aspect ratio for a format (null = keep the clip's). */
 export const formatAspect = (f: EditState['format']) => (f === 'vertical' ? 9 / 16 : f === 'square' ? 1 : f === 'wide' ? 16 / 9 : null)
@@ -77,6 +77,15 @@ export function EditPanel({ clip, edit, setEdit, trim }: { clip: Clip; edit: Edi
         <Segmented value={edit.speed} onChange={(speed) => set({ speed })} ariaLabel="Speed" options={[0.25, 0.5, 1, 1.5, 2].map((s) => ({ value: s, label: `${s}x` }))} />
       </div>
 
+      <div>
+        <div className="flex items-baseline justify-between">
+          <span className="label">Volume</span>
+          <span className="text-xs font-semibold tabular">{Math.round(edit.volume * 100)}%</span>
+        </div>
+        <input type="range" className="slider" min={0} max={2} step={0.05} value={edit.volume} aria-label="Export volume" style={{ ['--pct' as string]: `${(edit.volume / 2) * 100}%` }} onChange={(e) => set({ volume: Number(e.target.value) })} />
+        <p className="text-xs text-ink-3 mt-1">Makes the exported clip quieter or louder. 100% leaves it as recorded.</p>
+      </div>
+
       <div className="flex items-start gap-3">
         <Toggle checked={edit.captions} onChange={(captions) => set({ captions })} label="Add captions" hint={modelReady === false ? 'Turns speech into text on your PC. The first time, Clutch downloads a 57 MB speech model.' : 'Turns speech into text on your PC and burns it in.'} />
         <Captions size={16} className="text-ink-3 mt-1 ml-auto shrink-0" />
@@ -88,7 +97,7 @@ export function EditPanel({ clip, edit, setEdit, trim }: { clip: Clip; edit: Edi
         <span className="ml-auto tabular text-ink-3">{fmtTime(outLen)}</span>
       </div>
 
-      <button className="btn-primary w-full h-11" disabled={!!busy || (edit.format === 'original' && edit.speed === 1 && !edit.captions)} onClick={() => void run()}>
+      <button className="btn-primary w-full h-11" disabled={!!busy || (edit.format === 'original' && edit.speed === 1 && !edit.captions && edit.volume === 1)} onClick={() => void run()}>
         {busy ? <><Loader2 size={16} className="animate-spin" /> {busy}{progress > 0 ? ` ${Math.round(progress * 100)}%` : '…'}</> : <><Wand2 size={16} /> Export as a new clip</>}
       </button>
     </div>

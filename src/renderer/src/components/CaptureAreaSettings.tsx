@@ -154,6 +154,12 @@ export function StorageSettings() {
   const { settings, save, libraryVersion } = useStore()
   const [stats, setStats] = useState<{ count: number; bytes: number; seconds: number; trashed: number } | null>(null)
   const [free, setFree] = useState<number | null>(null)
+  const [shrink, setShrink] = useState<{ progress: { running: boolean; done: number; total: number; savedBytes: number }; existingCount: number; existingBytes: number } | null>(null)
+  useEffect(() => { void window.cf.library.shrinkState().then(setShrink) }, [libraryVersion])
+  useEffect(() => {
+    const off = window.cf.on('shrink-progress', (progress: { running: boolean; done: number; total: number; savedBytes: number }) => setShrink((s) => (s ? { ...s, progress } : s)))
+    return () => { off() }
+  }, [])
   useEffect(() => { void window.cf.library.stats().then(setStats) }, [libraryVersion])
   useEffect(() => { void window.cf.system.diskFree(settings?.capture.outputDir).then(setFree) }, [libraryVersion, settings?.capture.outputDir])
   if (!settings) return null
@@ -192,6 +198,28 @@ export function StorageSettings() {
             {DAYS.map((n) => <option key={n} value={n}>{n === 0 ? 'Never' : `${n} days`}</option>)}
           </select>
         </Field>
+      </div>
+      <div className="card-2 p-4 space-y-3">
+        <div className="flex items-start gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold">Storage saver</div>
+            <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">Re-saves clips in a newer format (AV1) that looks the same and takes about a quarter of the space. Runs on your graphics card only while Clutch isn't recording. Sharing and exporting still give you a normal MP4 that plays everywhere.</p>
+          </div>
+          <select className="input w-44 shrink-0" value={(st.shrink ?? 'auto') === 'off' ? 'off' : String(st.shrinkAfterDays ?? 1)} aria-label="Storage saver" onChange={(e) => setRules(e.target.value === 'off' ? { shrink: 'off' } : { shrink: 'auto', shrinkAfterDays: Number(e.target.value) })}>
+            <option value="off">Off</option>
+            <option value="0">Right away</option>
+            <option value="1">After 1 day</option>
+            <option value="7">After 7 days</option>
+          </select>
+        </div>
+        {shrink && (shrink.progress.running ? (
+          <p className="text-xs text-ink-2 tabular">Shrinking {Math.min(shrink.progress.done + 1, shrink.progress.total)} of {shrink.progress.total}… {shrink.progress.savedBytes > 0 ? `${fmtBytes(shrink.progress.savedBytes)} saved so far` : ''}</p>
+        ) : shrink.existingCount > 0 ? (
+          <div className="flex items-center gap-3">
+            <button className="btn-sm" onClick={() => void window.cf.library.shrinkExisting().then(() => window.cf.library.shrinkState().then(setShrink))}>Shrink my existing clips</button>
+            <span className="text-xs text-ink-3">{shrink.existingCount} clip{shrink.existingCount === 1 ? '' : 's'}, {fmtBytes(shrink.existingBytes)} now, about {fmtBytes(shrink.existingBytes * 0.3)} after. Replaces the files; can't be undone.</span>
+          </div>
+        ) : shrink.progress.savedBytes > 0 ? <p className="text-xs text-ok">Done. {fmtBytes(shrink.progress.savedBytes)} saved.</p> : null)}
       </div>
       {free !== null && (
         <p className={`text-xs ${free < st.lowSpaceGB * 1024 ** 3 ? 'text-warn' : 'text-ink-3'}`}>

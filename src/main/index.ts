@@ -16,6 +16,7 @@ import { applyChanges } from './importer/parse'
 import { fromModel, smartReadLocal } from './importer/smart'
 import { MiniWidget } from './miniWidget'
 import { Updater } from './updater'
+import { Compressor } from './library/compressor'
 import { OverlayToast } from './overlay'
 import { Recorder } from './recorder'
 import { SettingsStore } from './settings'
@@ -409,6 +410,18 @@ app.whenReady().then(async () => {
     return added
   })
   ipcMain.handle('update:install', () => updater.install())
+  // Waveform for the clip viewer's timeline, cached next to the thumbnail.
+  ipcMain.handle('library:waveform', async (_e, clipId: string) => {
+    const clip = recorder.library.get(clipId)
+    if (!clip) return []
+    const cache = clip.thumbnail.replace(/\.jpg$/i, '') + '.wave.json'
+    try { return JSON.parse((await import('node:fs')).readFileSync(cache, 'utf8')) as number[] } catch { /* not cached yet */ }
+    const { audioPeaks } = await import('./capture/ffmpeg')
+    const peaks = await audioPeaks(clip.file, clip.durationSec)
+    if (peaks.length) { try { (await import('node:fs')).writeFileSync(cache, JSON.stringify(peaks)) } catch { /* read-only */ } }
+    return peaks
+  })
+  ipcMain.handle('system:diskInfo', async (_e, dir: string) => (await import('./library/janitor')).diskInfo(dir || settings.get().capture.outputDir))
   ipcMain.handle('system:diskFree', async (_e, dir: string) => {
     const { freeBytes } = await import('./library/janitor')
     return freeBytes(dir || settings.get().capture.outputDir)
@@ -628,6 +641,29 @@ app.whenReady().then(async () => {
   registerHotkey(settings.get())
   scheduler.start()
   updater.on('change', (st) => { send('update', st); tray?.refresh() })
+  // Storage saver: shrink clips in the background while not recording.
+  if ((settings.get().storage.shrink ?? 'auto') === 'auto' && !settings.get().storage.shrinkSince) settings.set({ storage: { ...settings.get().storage, shrinkSince: Date.now() } })
+  const compressor = new Compressor(recorder.library, () => settings.get(), () => recorder.status.running || !!recorder.status.starting, (m) => recorder.log('info', m))
+  compressor.on('progress', (p) => send('shrink-progress', p))
+  recorder.on('status', (st) => { if (st.running || st.starting) compressor.pauseForRecording() })
+  settings.onChange((s) => { if ((s.storage.shrink ?? 'auto') === 'auto' && !s.storage.shrinkSince) settings.set({ storage: { ...s.storage, shrinkSince: Date.now() } }) })
+  compressor.start()
+  ipcMain.handle('storage:shrinkState', () => {
+    const existing = compressor.candidates(true)
+    return { progress: compressor.progress, existingCount: existing.length, existingBytes: existing.reduce((n, c) => n + (c.sizeBytes || 0), 0) }
+  })
+  ipcMain.handle('storage:shrinkExisting', () => compressor.shrinkExisting())
+  ipcMain.handle('library:exportCompatible', async (_e, clipId: string) => {
+    const clip = recorder.library.get(clipId)
+    if (!clip) throw new Error('Clip not found')
+    const safe = clip.title.replace(/[<>:"/\\|?*]+/g, '').trim() || 'Clip'
+    const r = await dialog.showSaveDialog(win!, { title: 'Save a copy that plays everywhere', defaultPath: path.join(app.getPath('videos'), `${safe}.mp4`), filters: [{ name: 'MP4 video', extensions: ['mp4'] }] })
+    if (r.canceled || !r.filePath) return null
+    const { exportCompatible } = await import('./editor')
+    await exportCompatible(clip, r.filePath, (f) => send('editor-progress', { clipId, stage: 'Saving MP4', progress: f }))
+    shell.showItemInFolder(r.filePath)
+    return r.filePath
+  })
   updater.start()
   recorder.library.reconcile()
   if (settings.get().startBufferOnLaunch) void recorder.start('manual')

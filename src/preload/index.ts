@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, EditOptions, GameInfo, GameSummary, HealthItem, ImportChange, ImportResult, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
+import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, EditOptions, GameInfo, ShrinkProgress, GameSummary, HealthItem, ImportChange, ImportResult, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
 
 export interface LibraryQuery {
   text?: string
@@ -19,7 +19,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress' | 'shrink-progress'
 
 const api = {
   settings: {
@@ -37,6 +37,7 @@ const api = {
     testOverlay: () => ipcRenderer.invoke('system:testOverlay'),
     canAcrylic: (): Promise<boolean> => ipcRenderer.invoke('system:canAcrylic'),
     diskFree: (dir?: string): Promise<number | null> => ipcRenderer.invoke('system:diskFree', dir ?? ''),
+    diskInfo: (dir?: string): Promise<{ free: number; total: number } | null> => ipcRenderer.invoke('system:diskInfo', dir ?? ''),
     canLaunchAtLogin: (): Promise<boolean> => ipcRenderer.invoke('system:canLaunchAtLogin')
   },
   account: {
@@ -120,7 +121,11 @@ const api = {
     reveal: (file: string) => ipcRenderer.invoke('library:reveal', file),
     openFolder: () => ipcRenderer.invoke('library:openFolder'),
     trim: (id: string, startSec: number, endSec: number, mode: 'new' | 'replace'): Promise<Clip | null> => ipcRenderer.invoke('library:trim', id, startSec, endSec, mode),
-    viewed: (id: string): Promise<void> => ipcRenderer.invoke('library:viewed', id)
+    viewed: (id: string): Promise<void> => ipcRenderer.invoke('library:viewed', id),
+    waveform: (id: string): Promise<number[]> => ipcRenderer.invoke('library:waveform', id),
+    exportCompatible: (id: string): Promise<string | null> => ipcRenderer.invoke('library:exportCompatible', id),
+    shrinkState: (): Promise<{ progress: ShrinkProgress; existingCount: number; existingBytes: number }> => ipcRenderer.invoke('storage:shrinkState'),
+    shrinkExisting: (): Promise<void> => ipcRenderer.invoke('storage:shrinkExisting')
   },
   highlights: {
     today: (): Promise<{ clip: Clip; score: number } | null> => ipcRenderer.invoke('highlights:today')

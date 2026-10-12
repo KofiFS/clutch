@@ -131,7 +131,7 @@ export class Library extends EventEmitter<{ change: [] }> {
     return clip
   }
 
-  update(id: string, patch: Partial<Pick<Clip, 'title' | 'tags' | 'favorite' | 'game' | 'uploads' | 'cloud'>>): Clip | undefined {
+  update(id: string, patch: Partial<Pick<Clip, 'title' | 'tags' | 'favorite' | 'game' | 'uploads' | 'cloud' | 'sizeBytes' | 'shrunk'>>): Clip | undefined {
     const c = this.get(id)
     if (!c) return
     Object.assign(c, patch)
@@ -205,6 +205,7 @@ export class Library extends EventEmitter<{ change: [] }> {
     this.clips = this.clips.filter((x) => x.id !== id)
     try { fs.unlinkSync(c.file) } catch { /* ignore */ }
     try { fs.unlinkSync(c.thumbnail) } catch { /* ignore */ }
+    try { fs.unlinkSync(c.thumbnail.replace(/\.jpg$/i, '') + '.wave.json') } catch { /* no waveform cached */ }
     this.save()
   }
 

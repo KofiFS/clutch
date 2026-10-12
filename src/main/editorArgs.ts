@@ -58,7 +58,9 @@ export function editFilter(o: EditOptions, src: { w: number; h: number }, srt: s
   vf.push('format=yuv420p')
   const chain = vf.join(',')
   const video = graph ? `${graph},${chain}[v]` : `[0:v]${chain}[v]`
-  return hasAudio ? `${video};[0:a:0]${speed !== 1 ? atempo(speed) : 'anull'}[a]` : video
+  const vol = Math.min(3, Math.max(0, o.volume ?? 1))
+  const af = [speed !== 1 ? atempo(speed) : '', vol !== 1 ? `volume=${vol.toFixed(2)}` : ''].filter(Boolean).join(',') || 'anull'
+  return hasAudio ? `${video};[0:a:0]${af}[a]` : video
 }
 
 /** -filter_complex joining clips in order, scaled/padded to W x H at 60 fps. Outputs [v] and [a]. */
@@ -77,5 +79,6 @@ export function joinFilter(clips: { durationSec: number; hasAudio: boolean }[], 
 /** Short filename suffix describing an edit, e.g. "vertical 0.5x captions". */
 export function editSuffix(o: EditOptions, captions: boolean): string {
   const speed = Math.min(4, Math.max(0.25, o.speed || 1))
-  return [o.format !== 'original' ? { vertical: 'vertical', square: 'square', wide: '16x9' }[o.format] : '', speed !== 1 ? `${speed}x` : '', captions ? 'captions' : ''].filter(Boolean).join(' ')
+  const vol = Math.min(3, Math.max(0, o.volume ?? 1))
+  return [o.format !== 'original' ? { vertical: 'vertical', square: 'square', wide: '16x9' }[o.format] : '', speed !== 1 ? `${speed}x` : '', vol !== 1 ? `vol${Math.round(vol * 100)}` : '', captions ? 'captions' : ''].filter(Boolean).join(' ')
 }

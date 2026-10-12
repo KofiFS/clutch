@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -126,4 +126,38 @@ export async function trimClip(src: string, out: string, startSec: number, endSe
     '-map', '0', '-c', 'copy', '-movflags', '+faststart', out
   ], { timeoutMs: 120_000 })
   return r.code === 0
+}
+
+/**
+ * Loudness peaks of a clip's main audio track for drawing a waveform: `buckets` values in 0..1.
+ * Decodes at a low sample rate and streams, so even long recordings stay cheap.
+ */
+export function audioPeaks(file: string, durationSec: number, buckets = 800): Promise<number[]> {
+  const rate = durationSec > 600 ? 400 : durationSec > 60 ? 2000 : 8000
+  const perBucket = Math.max(1, Math.floor((durationSec * rate) / buckets))
+  return new Promise((resolve) => {
+    const p = spawn(ffmpegPath(), ['-hide_banner', '-loglevel', 'error', '-i', file, '-map', '0:a:0', '-ac', '1', '-ar', String(rate), '-f', 's16le', 'pipe:1'], { windowsHide: true })
+    lowerPriority(p.pid)
+    const peaks: number[] = []
+    let cur = 0
+    let n = 0
+    let carry: Buffer | null = null
+    p.stdout.on('data', (chunk: Buffer) => {
+      const b = carry ? Buffer.concat([carry, chunk]) : chunk
+      const usable = b.length - (b.length % 2)
+      for (let i = 0; i < usable; i += 2) {
+        const v = Math.abs(b.readInt16LE(i))
+        if (v > cur) cur = v
+        if (++n >= perBucket) { peaks.push(cur / 32768); cur = 0; n = 0 }
+      }
+      carry = usable < b.length ? b.subarray(usable) : null
+    })
+    p.on('error', () => resolve([]))
+    p.on('exit', () => {
+      if (n > 0) peaks.push(cur / 32768)
+      // Square-root scale so quiet talk is still visible next to loud moments.
+      const max = Math.max(0.05, ...peaks)
+      resolve(peaks.map((x) => Math.round(Math.sqrt(x / max) * 1000) / 1000))
+    })
+  })
 }

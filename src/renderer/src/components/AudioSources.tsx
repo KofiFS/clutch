@@ -19,7 +19,7 @@ const VIRTUAL = /cable|voicemeeter|vb-audio|virtual|stereo mix|wave link|broadca
  * "Separate track" to also keep it on its own track for editing later.
  */
 export function AudioSources() {
-  const { settings, save, status } = useStore()
+  const { settings, save } = useStore()
   const [devices, setDevices] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -95,7 +95,6 @@ export function AudioSources() {
                   <div className="space-y-1.5">
                     <LiveMeter source={isDesktop ? 'system' : src.id} label="Level" />
                     {missing && <p className="text-[11px] text-warn">Not plugged in. Recording continues without it.</p>}
-                    {!status.running && <p className="text-[11px] text-ink-3">Meters move while recording.</p>}
                   </div>
                   <div className="flex items-center gap-2.5">
                     <button className="text-ink-3 hover:text-ink shrink-0" aria-label={src.volume === 0 ? 'Unmute' : 'Mute'} onClick={() => void update(src.id, { volume: src.volume === 0 ? 1 : 0 })}>{src.volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>

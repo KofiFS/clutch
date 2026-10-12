@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, FolderOpen, Heart, Maximize, Minimize, PanelRightClose, PanelRightOpen, Pause, Play, Scissors, Trash2, Volume2, VolumeX, X, Repeat } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FolderOpen, Heart, Maximize, Minimize, PanelRightClose, PanelRightOpen, Pause, Play, Scissors, Trash2, Volume2, VolumeX, X, Repeat, Download } from 'lucide-react'
 import type { Clip } from '../../../shared/types'
 import { fileUrl, fmtBytes, fmtTime, useStore } from '../lib/store'
 import { GameIcon, InlineEdit, Kbd, useConfirm } from './ui'
@@ -20,6 +20,10 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
   const [neighbors, setNeighbors] = useState<{ prev?: string; next?: string }>({})
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
+  // Player volume (0..1), remembered between clips and sessions.
+  const [volume, setVolume] = useState(() => { try { const v = Number(localStorage.getItem('cf.viewer.volume')); return Number.isFinite(v) && localStorage.getItem('cf.viewer.volume') !== null ? Math.min(1, Math.max(0, v)) : 1 } catch { return 1 } })
+  useEffect(() => { try { localStorage.setItem('cf.viewer.volume', String(volume)) } catch { /* private mode */ } }, [volume])
+  const [peaks, setPeaks] = useState<number[]>([])
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [trim, setTrim] = useState<{ start: number; end: number } | null>(null)
@@ -63,6 +67,13 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
     setTrim(null)
   }, [clipId, libraryVersion])
   useEffect(() => { setTab('details'); setEdit(DEFAULT_EDIT); void window.cf.library.viewed(clipId) }, [clipId])
+  useEffect(() => {
+    let alive = true
+    setPeaks([])
+    void window.cf.library.waveform(clipId).then((p) => { if (alive) setPeaks(p) })
+    return () => { alive = false }
+  }, [clipId])
+  useEffect(() => { if (video.current) video.current.volume = volume }, [volume, clip?.id])
 
   const seek = useCallback((t: number) => { if (video.current) video.current.currentTime = Math.max(0, Math.min(duration, t)) }, [duration])
   const togglePlay = useCallback(() => { const v = video.current; if (!v) return; v.paused ? void v.play() : v.pause() }, [])
@@ -122,6 +133,8 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
         case 'l': case 'L': toggleFav(); break
         case 't': case 'T': if (!document.fullscreenElement) setWide((w) => !w); break
         case 'm': case 'M': setMuted((m) => !m); break
+        case 'ArrowUp': e.preventDefault(); setMuted(false); setVolume((v) => Math.min(1, Math.round((v + 0.1) * 10) / 10)); break
+        case 'ArrowDown': e.preventDefault(); setVolume((v) => Math.max(0, Math.round((v - 0.1) * 10) / 10)); break
         case 'Delete': void remove(); break
         case '[': if (neighbors.prev) openClip(neighbors.prev); break
         case ']': if (neighbors.next) openClip(neighbors.next); break
@@ -238,7 +251,14 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
               onPointerLeave={() => { if (!dragging.current) setHover(null) }}
             >
               {/* progress */}
-              <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${pct(shown)}%`, background: 'rgba(38,187,255,0.35)' }} />
+              <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${pct(shown)}%`, background: 'rgba(38,187,255,0.22)' }} />
+              {/* Audio waveform: grey ahead of the playhead, blue behind it */}
+              {peaks.length > 0 && (
+                <>
+                  <Waveform peaks={peaks} className="text-white/30" />
+                  <Waveform peaks={peaks} className="text-accent" style={{ clipPath: `inset(0 ${100 - pct(shown)}% 0 0)` }} />
+                </>
+              )}
               {hover && !dragging.current && <div className="absolute top-0 bottom-0 w-px bg-white/35 pointer-events-none" style={{ left: hover.x }} />}
               {trim && (
                 <>
@@ -266,8 +286,20 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
             </div>
             <div className="flex items-center gap-2">
               <button className="btn-ghost h-9 w-9 px-0" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
-              <button className="btn-ghost h-9 w-9 px-0" onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
-              <span className="font-hud text-[11px] tabular text-ink-2 w-28">{fmtTime(shown)} / {fmtTime(duration)}</span>
+              <button className="btn-ghost h-9 w-9 px-0" onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute' : 'Mute'} title="Mute (M)">{muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+              <input
+                type="range"
+                className="slider !w-24 shrink-0"
+                min={0}
+                max={1}
+                step={0.05}
+                value={muted ? 0 : volume}
+                aria-label="Volume"
+                title={`Volume ${Math.round((muted ? 0 : volume) * 100)}% (↑ ↓)`}
+                style={{ ['--pct' as string]: `${(muted ? 0 : volume) * 100}%` }}
+                onChange={(e) => { const v = Number(e.target.value); setVolume(v); if (v > 0 && muted) setMuted(false) }}
+              />
+              <span className="font-hud text-[11px] tabular text-ink-2 whitespace-nowrap ml-2">{fmtTime(shown)} / {fmtTime(duration)}</span>
               <span className="flex-1" />
               {trim ? (
                 <>
@@ -303,7 +335,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                   <dt className="text-ink-3">Recorded</dt><dd>{new Date(clip.createdAt).toLocaleString()}</dd>
                   <dt className="text-ink-3">Length</dt><dd className="tabular">{fmtTime(clip.durationSec)}</dd>
                   <dt className="text-ink-3">Video</dt><dd className="tabular">{clip.width}×{clip.height} · {clip.fps} fps</dd>
-                  <dt className="text-ink-3">File</dt><dd className="tabular">{fmtBytes(clip.sizeBytes)}</dd>
+                  <dt className="text-ink-3">File</dt><dd className="tabular">{fmtBytes(clip.sizeBytes)}{clip.shrunk && (clip.shrunk.codec === 'av1' || clip.shrunk.codec === 'hevc') && clip.shrunk.fromBytes > clip.sizeBytes ? <span className="text-ok"> · saved {fmtBytes(clip.shrunk.fromBytes - clip.sizeBytes)}</span> : null}</dd>
                   <dt className="text-ink-3">Trigger</dt><dd className="capitalize">{clip.trigger}{clip.event ? ` · ${clip.event}` : ''}</dd>
                 </dl>
                 {(clip.bookmarks?.length ?? 0) > 0 && (
@@ -351,6 +383,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                   <button className={`btn ${clip.favorite ? 'border-bad/50' : ''}`} onClick={toggleFav}><Heart size={15} className={clip.favorite ? 'fill-bad text-bad' : ''} /> {clip.favorite ? 'Favorited' : 'Favorite'}</button>
                   <button className="btn" onClick={() => setTab('share')}>Share / upload</button>
                   <button className="btn" onClick={() => void window.cf.library.reveal(clip.file)}><FolderOpen size={15} /> Show file</button>
+                  <button className="btn col-span-2" disabled={busy} title="A normal H.264 MP4 that plays on any phone, editor or site" onClick={() => { setBusy(true); void window.cf.library.exportCompatible(clip.id).then((f) => { if (f) toast.push({ kind: 'success', title: 'Saved as MP4', body: f }) }).catch((e) => toast.push({ kind: 'error', title: 'Could not save', body: String(e?.message ?? e) })).finally(() => setBusy(false)) }}><Download size={15} /> Save as MP4 (plays everywhere)</button>
                   <button className="btn-danger" onClick={() => void remove()}><Trash2 size={15} /> Delete</button>
                 </div>
               </div>
@@ -381,5 +414,20 @@ function TagEditor({ value, onChange }: { value: string[]; onChange: (tags: stri
       ))}
       <input className="bg-transparent text-sm focus:outline-none flex-1 min-w-20" placeholder={value.length ? '' : 'funny, clutch, upload'} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add() } }} onBlur={add} />
     </div>
+  )
+}
+
+/** Peaks drawn as thin bars across the timeline (0..1 each, centered). */
+function Waveform({ peaks, className = '', style }: { peaks: number[]; className?: string; style?: React.CSSProperties }) {
+  const n = peaks.length
+  let d = ''
+  for (let i = 0; i < n; i++) {
+    const h = Math.max(2, peaks[i] * 80)
+    d += `M${i + 0.5} ${50 - h / 2}v${h}`
+  }
+  return (
+    <svg className={`absolute left-0 top-1 pointer-events-none ${className}`} style={{ width: '100%', height: 'calc(100% - 8px)', ...style }} viewBox={`0 0 ${n} 100`} preserveAspectRatio="none" aria-hidden>
+      <path d={d} stroke="currentColor" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" />
+    </svg>
   )
 }

@@ -63,7 +63,7 @@ export default function Rules() {
         <div className="card-2 p-3 space-y-2">
           <LiveMeter source="mic" label="Mic" threshold={vo.thresholdDb} />
           <LiveMeter source="system" label="System" threshold={vo.thresholdDb} />
-          <p className="text-[11px] text-ink-3">{status.running ? 'The line is your threshold: anything past it counts as talking.' : 'Start recording to see live levels against the threshold.'}</p>
+          <p className="text-[11px] text-ink-3">The line is your threshold: anything past it counts as talking.</p>
         </div>
         <div className="grid grid-cols-4 gap-5">
           <Slider label="Threshold" value={vo.thresholdDb} min={-60} max={-10} step={1} format={(n) => `${n} dB`} onChange={(thresholdDb) => void setVoice({ thresholdDb })} />

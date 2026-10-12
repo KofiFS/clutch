@@ -11,6 +11,22 @@ export interface JanitorResult {
   reason: 'age' | 'size' | null
 }
 
+/** Free and total space of the drive holding `dir`. */
+export function diskInfo(dir: string): { free: number; total: number } | null {
+  let d = dir
+  for (let i = 0; i < 10 && d; i++) {
+    try {
+      const st = fs.statfsSync(d)
+      return { free: Number(st.bavail) * Number(st.bsize), total: Number(st.blocks) * Number(st.bsize) }
+    } catch {
+      const up = path.dirname(d)
+      if (up === d) break
+      d = up
+    }
+  }
+  return null
+}
+
 /** Free space on the drive holding `dir` (walks up to an existing folder). */
 export function freeBytes(dir: string): number | null {
   let d = dir

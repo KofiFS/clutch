@@ -257,6 +257,19 @@ export interface StorageRules {
   deleteAfterDays: number
   /** Warn when the clips or recording drive has less than this much free space (GB). */
   lowSpaceGB: number
+  /** Storage saver: re-encode clips to AV1/HEVC in the background to take far less space. */
+  shrink?: 'auto' | 'off'
+  /** Shrink clips this many days after recording (0 = as soon as Clutch is idle). */
+  shrinkAfterDays?: number
+  /** When automatic shrinking was turned on; older clips are only shrunk on request. */
+  shrinkSince?: number | null
+}
+
+export interface ShrinkProgress {
+  running: boolean
+  done: number
+  total: number
+  savedBytes: number
 }
 
 export interface Settings {
@@ -285,6 +298,8 @@ export type TriggerSource = 'hotkey' | 'vision' | 'voice' | 'hype' | 'manual' | 
 
 export interface Clip {
   id: string
+  /** Set once the storage saver has handled this clip (codec 'av1'/'hevc', or why it was left alone). */
+  shrunk?: { codec: string; fromBytes: number; at: string }
   file: string
   thumbnail: string
   createdAt: string
@@ -478,7 +493,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cloud: { serverUrl: OFFICIAL_CLOUD_URL, backupFavorites: true },
   blocklist: [],
   extraGames: [],
-  storage: { maxGB: 100, deleteAfterDays: 0, lowSpaceGB: 10 },
+  storage: { maxGB: 100, deleteAfterDays: 0, lowSpaceGB: 10, shrink: 'auto', shrinkAfterDays: 1, shrinkSince: null },
   allowlist: [],
   profiles: {},
   startBufferOnLaunch: false
@@ -567,4 +582,6 @@ export interface EditOptions {
   speed: number
   /** Burn in automatic captions (speech-to-text on this PC). */
   captions: boolean
+  /** Audio volume of the export, 1 = unchanged (0 .. 3). */
+  volume?: number
 }
