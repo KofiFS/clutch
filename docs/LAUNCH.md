@@ -5,6 +5,56 @@ this is what switches it on.
 
 ## 1. Code signing (removes the Windows "unsafe app" warning)
 
+Plan: sign the downloadable installer for free through **SignPath Foundation**, and also list Clutch
+in the **Microsoft Store** (free, never shows the warning). **Azure** is the paid fallback.
+
+Any signed download still builds trust with Windows over the first weeks of downloads, so a few
+early users may see the warning with any certificate. Store installs never do.
+
+### 1a. SignPath Foundation: free signing for the installer
+
+SignPath signs open-source projects for free. The catch is that Windows shows **"SignPath Foundation"**
+as the publisher, not your name.
+
+1. **Push the repo and publish one release first.** SignPath requires the project to be public and
+   already released. An unsigned v0.1.0 release on GitHub is enough (see section 2).
+2. **Add a code signing policy page.** SignPath requires one on the project's site or README, for
+   example a "Code signing policy" section saying:
+   - *Free code signing provided by SignPath.io, certificate by SignPath Foundation.*
+   - Who can approve releases (you, as the maintainer).
+   - That signed builds are made only by GitHub Actions from this repository.
+   - A privacy line: Clutch only sends data to services the user turns on (cloud sharing, YouTube,
+     AI features).
+3. **Apply** at signpath.org (apply page). Name the project Clutch, give the repo URL, license
+   GPL-3.0-or-later, and say builds come from GitHub Actions. Their rules exclude projects with
+   *commercial dual-licensing*. Clutch is GPL-only (Pro is a hosted service, not a different
+   license), so say that clearly in the application.
+4. **When approved**, SignPath gives you an organization ID, a project slug and a signing policy.
+   Create an API token in SignPath, add it as the GitHub secret `SIGNPATH_API_TOKEN`, and send me
+   the organization ID and project slug. I'll add the signing step to the release workflow: the
+   build uploads the unsigned installer, SignPath signs it, and the release publishes the signed
+   file.
+5. Approve each release's signing request in SignPath, if your policy asks for manual approval.
+
+### 1b. Microsoft Store: free, and no warning at all
+
+1. **Register** as an individual developer at storedeveloper.microsoft.com. It's free and uses
+   ID verification (photo of your ID plus a selfie).
+2. In **Partner Center**, create a new app and **reserve the name "Clutch"**. If it's taken, pick
+   the Store name now (for example "Clutch Clips"); the app itself can stay Clutch.
+3. Partner Center → the app → **Product identity**. Send me these three values: *Package/Identity/Name*,
+   *Package/Identity/Publisher* (starts with `CN=`) and *Package/Properties/PublisherDisplayName*.
+   I'll add a Store package (MSIX/AppX) build. The Store signs it, so no certificate is needed for this.
+4. Before submitting, I'll test the Store build on your PC: global hotkeys, Start with Windows, game
+   detection, per-app audio (Discord track) and window capture, since Store apps run with a few
+   extra Windows rules.
+5. Upload the package, fill in the listing (description, screenshots, privacy policy URL, age rating)
+   and submit for certification. Updates go through the Store after that.
+
+### 1c. Azure Artifact Signing (paid fallback, your own name as publisher)
+
+Use this if SignPath says no, or if you want "Clutch" or your own name shown as the publisher.
+
 1. Azure portal → create an **Artifact Signing** (Trusted Signing) account, Basic plan
    ($9.99/month), and complete **identity validation** (individual or business).
 2. Create a **certificate profile** (Public Trust).
