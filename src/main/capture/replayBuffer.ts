@@ -295,7 +295,10 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     for (const src of sources) {
       if (src.kind === 'desktop') continue
       srcInput.push({ src, idx: srcInput.length })
-      inputs.push('-f', 'dshow', '-rtbufsize', '64M', '-thread_queue_size', '2048', '-i', `audio=${src.device}`)
+      // Small capture buffer: by default DirectShow hands over mic audio in ~0.5 s chunks, and FFmpeg
+      // holds the screen capture back while it waits for audio to keep the streams in step, so the
+      // picture froze ~0.4 s every second. 20 ms chunks keep audio and video moving together.
+      inputs.push('-f', 'dshow', '-audio_buffer_size', '20', '-rtbufsize', '64M', '-thread_queue_size', '2048', '-i', `audio=${src.device}`)
     }
     const desktop = sources.find((x) => x.kind === 'desktop')
     if (desktop) {
