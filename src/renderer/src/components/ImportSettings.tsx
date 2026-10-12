@@ -161,7 +161,7 @@ export function ImportSettings() {
               {changes.map((c, i) => (
                 <li key={c.id}>
                   <label className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-white/[0.03]">
-                    <input type="checkbox" className="mt-1 accent-[#4fe3ff] w-4 h-4" checked={c.on} onChange={(e) => setChanges(changes.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
+                    <input type="checkbox" className="mt-1 accent-[#26bbff] w-4 h-4" checked={c.on} onChange={(e) => setChanges(changes.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-2 text-sm">
                         <span className="w-36 shrink-0 text-ink-2">{c.label}</span>

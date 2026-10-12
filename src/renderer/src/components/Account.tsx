@@ -54,7 +54,7 @@ export function SignInDialog() {
     <Modal open={!!signInReason} onClose={closeSignIn} width="max-w-md" hideHeader>
       <div className="p-7 space-y-5">
         <div className="text-center">
-          <div className="mx-auto w-14 h-14 rounded-2xl grid place-items-center mb-3 text-accent border border-accent/40" style={{ background: 'radial-gradient(120% 120% at 30% 20%, rgba(79,227,255,0.3), rgba(79,227,255,0.05))' }}><Cloud size={26} /></div>
+          <div className="mx-auto w-14 h-14 rounded-2xl grid place-items-center mb-3 text-accent border border-accent/40" style={{ background: 'radial-gradient(120% 120% at 30% 20%, rgba(38,187,255,0.3), rgba(38,187,255,0.05))' }}><Cloud size={26} /></div>
           <h3 className="text-xl font-semibold">Sign in to Clutch</h3>
           <p className="text-sm text-ink-2 mt-1.5 leading-relaxed">{signInReason}</p>
         </div>

@@ -231,7 +231,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
               onPointerLeave={() => { if (!dragging.current) setHover(null) }}
             >
               {/* progress */}
-              <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${pct(shown)}%`, background: 'linear-gradient(90deg, rgba(155,123,255,0.35), rgba(79,227,255,0.45))' }} />
+              <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${pct(shown)}%`, background: 'linear-gradient(90deg, rgba(155,123,255,0.35), rgba(38,187,255,0.45))' }} />
               {hover && !dragging.current && <div className="absolute top-0 bottom-0 w-px bg-white/35 pointer-events-none" style={{ left: hover.x }} />}
               {trim && (
                 <>
@@ -247,13 +247,13 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                   key={i}
                   title={`Bookmark ${i + 1} · ${fmtTime(b)}`}
                   onPointerDown={(e) => { e.stopPropagation(); seek(b); setTime(b) }}
-                  className="absolute top-1 w-3 h-3 -ml-1.5 rotate-45 rounded-[3px] z-10 bg-[#ffc857] shadow-[0_0_8px_#ffc857] hover:scale-125 transition-transform"
+                  className="absolute top-1 w-3 h-3 -ml-1.5 rotate-45 rounded-[3px] z-10 bg-[#ffc857] hover:scale-125 transition-transform"
                   style={{ left: `${pct(b)}%` }}
                 />
               ))}
-              <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_10px_#4fe3ff,0_0_4px_#fff] pointer-events-none" style={{ left: `${pct(shown)}%` }}>
+              <div className="absolute top-0 bottom-0 w-0.5 bg-white pointer-events-none" style={{ left: `${pct(shown)}%` }}>
                 {/* Grab knob: grows while hovering or dragging */}
-                <span className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_12px_#4fe3ff] transition-all duration-150 ${scrub !== null ? 'w-4 h-4' : 'w-2.5 h-2.5 group-hover/tl:w-3.5 group-hover/tl:h-3.5'}`} />
+                <span className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white transition-all duration-150 ${scrub !== null ? 'w-4 h-4' : 'w-2.5 h-2.5 group-hover/tl:w-3.5 group-hover/tl:h-3.5'}`} />
               </div>
             </div>
             </div>
@@ -286,7 +286,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
         <aside className={`relative z-[2] w-[340px] shrink-0 border-l border-white/10 flex-col ${wide ? 'hidden' : 'flex'}`}>
           <div className="flex p-2.5 gap-1 border-b border-white/10">
             {(['details', 'share'] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={`flex-1 h-9 rounded-full text-sm font-medium capitalize transition-all ${tab === t ? 'text-ink liquid bg-white/15 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.5),0_0_16px_-6px_rgba(79,227,255,0.7)]' : 'text-ink-3 hover:text-ink-2'}`}>{t}</button>
+              <button key={t} onClick={() => setTab(t)} className={`flex-1 h-9 rounded-full text-sm font-medium capitalize transition-all ${tab === t ? 'text-ink liquid bg-white/15 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.5),0_0_16px_-6px_rgba(38,187,255,0.7)]' : 'text-ink-3 hover:text-ink-2'}`}>{t}</button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">

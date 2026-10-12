@@ -78,7 +78,7 @@ export default function Dashboard() {
                 </>
               )}
               <button className={`btn h-11 px-5 ${status.longRecording ? 'text-[#ff8aa1] border-[#ff3b5c]/50' : ''}`} onClick={() => void window.cf.buffer.toggleLong()}>
-                <span className={`w-2 h-2 rounded-full ${status.longRecording ? 'bg-[#ff3b5c] shadow-[0_0_8px_#ff3b5c]' : 'bg-[#ff3b5c]/70'}`} />
+                <span className={`w-2 h-2 rounded-full ${status.longRecording ? 'bg-[#ff3b5c]' : 'bg-[#ff3b5c]/70'}`} />
                 {status.longRecording ? 'Stop long recording' : 'Long recording'}
                 {settings.capture.longRecordHotkey && <Kbd>{settings.capture.longRecordHotkey}</Kbd>}
               </button>
@@ -112,7 +112,7 @@ export default function Dashboard() {
             <div className="relative z-[2] flex items-center gap-2.5">
               <IconOrb size={32} tone={t.on ? 'cyan' : 'neutral'}><t.icon size={15} /></IconOrb>
               <span className="font-semibold text-sm">{t.label}</span>
-              <span className={`ml-auto w-2 h-2 rounded-full ${t.on ? 'bg-ok shadow-[0_0_8px_#4ef2b0]' : 'bg-ink-3/40'}`} />
+              <span className={`ml-auto w-2 h-2 rounded-full ${t.on ? 'bg-ok' : 'bg-ink-3/40'}`} />
             </div>
             <div className="relative z-[2] text-xs text-ink-3 mt-2.5 truncate">{t.desc}</div>
           </button>
@@ -128,7 +128,7 @@ export default function Dashboard() {
             <span className="absolute bottom-2 right-2 chip bg-black/70 border-0 text-white tabular">{fmtDuration(best.clip.durationSec)}</span>
           </button>
           <div className="relative z-[2] flex-1 min-w-0 p-6 flex flex-col">
-            <div className="flex items-center gap-2 font-hud text-[10px] font-medium uppercase tracking-[0.18em] text-warn drop-shadow-[0_0_8px_rgba(255,200,87,0.6)] w-fit cursor-help" title={`Best of today, picked from favorites, hype level, how it was triggered and views. ${settings.discord.dailyDigest.enabled && settings.discord.webhookUrl ? `Posts to Discord at ${settings.discord.dailyDigest.time}.` : `Notification at ${settings.discord.dailyDigest.time}.`}`}><Trophy size={14} /> Clip of the day</div>
+            <div className="flex items-center gap-2 font-hud text-[10px] font-medium uppercase tracking-[0.18em] text-warn drop- w-fit cursor-help" title={`Best of today, picked from favorites, hype level, how it was triggered and views. ${settings.discord.dailyDigest.enabled && settings.discord.webhookUrl ? `Posts to Discord at ${settings.discord.dailyDigest.time}.` : `Notification at ${settings.discord.dailyDigest.time}.`}`}><Trophy size={14} /> Clip of the day</div>
             <div className="text-lg font-semibold mt-1.5 truncate">{best.clip.title}</div>
             <div className="text-sm text-ink-3 flex items-center gap-1.5 mt-0.5 min-w-0">
               <GameIcon src={best.clip.gameIcon ? fileUrl(best.clip.gameIcon) : undefined} name={best.clip.game} size={16} />
@@ -210,7 +210,7 @@ export default function Dashboard() {
 
 function Problem({ text, action }: { text: string; action?: { label: string; onClick: () => void } }) {
   return (
-    <div className="card p-3.5 text-sm flex items-center gap-3 fade-in" style={{ boxShadow: "0 0 30px -12px rgba(255,107,139,0.8)" }}>
+    <div className="card p-3.5 text-sm flex items-center gap-3 fade-in">
       <AlertCircle className="text-bad shrink-0" size={18} />
       <div className="flex-1 min-w-0 leading-snug">{text}</div>
       {action && <button className="btn-sm" onClick={action.onClick}>{action.label}</button>}

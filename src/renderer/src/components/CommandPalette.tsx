@@ -27,7 +27,6 @@ const SETTINGS: { label: string; page: Page; find: string; keywords?: string }[]
   { label: 'Long recording & bookmarks', page: 'settings', find: 'Long recording & bookmarks', keywords: 'session record full alt f9 bookmark marker' },
   { label: 'Start recording when a game opens', page: 'settings', find: 'Start recording when a game opens', keywords: 'auto start detect game' },
   { label: 'Audio sources', page: 'settings', find: 'Audio sources', keywords: 'microphone mic input volume track separate discord desktop audio sound' },
-  { label: 'Appearance', page: 'settings', find: 'Appearance', keywords: 'theme glass lite effects transparent acrylic look' },
   { label: 'On-screen “Clipped!” popup', page: 'settings', find: 'On-screen “Clipped!” popup', keywords: 'overlay toast notification in game' },
   { label: 'Import settings from Medal, OBS or NVIDIA', page: 'settings', find: 'Bring your settings', keywords: 'import medal obs nvidia shadowplay screenshot copy migrate switch transfer' },
   { label: 'Treat an app as a game', page: 'rules', find: 'Treat as a game', keywords: 'game not detected missing windowed add game force detect record app' },
@@ -130,7 +129,6 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       toggle('hype moments', s.hype.enabled, (v) => void save({ hype: { ...s.hype, enabled: v } }), 'shout laugh trigger'),
       toggle('“when people talk”', s.voice.enabled, (v) => void save({ voice: { ...s.voice, enabled: v } }), 'voice trigger'),
       toggle('AI screen watching', s.vision.enabled, (v) => void save({ vision: { ...s.vision, enabled: v } }), 'vision ai trigger'),
-      toggle('Lite effects', s.app.effects === 'lite', (v) => void save({ app: { ...s.app, effects: v ? 'lite' : 'full' } }), 'performance glass blur')
     ]
     const pages: Item[] = PAGES.map((p) => ({ id: `p-${p.page}`, group: 'Pages', label: p.label, keywords: p.keywords, icon: <ArrowRight size={16} />, run: () => setPage(p.page) }))
     const setts: Item[] = SETTINGS.map((x) => ({ id: `s-${x.label}`, group: 'Settings', label: x.label, sub: PAGES.find((p) => p.page === x.page)?.label, keywords: x.keywords, icon: <SettingsIcon size={16} />, run: () => goSetting(x.page, x.find) }))
@@ -164,8 +162,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   let idx = -1
   return (
-    <div className="fixed inset-0 z-[150] bg-[rgba(2,6,16,0.45)] backdrop-blur-sm flex items-start justify-center pt-[12vh] px-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-label="Search" className="w-full max-w-[640px] rounded-[22px] overflow-hidden border border-white/15 pop-in" style={{ background: 'rgba(20,20,24,0.94)', boxShadow: 'inset 0 1px 0.5px rgba(255,255,255,0.3), 0 40px 90px -20px rgba(0,0,0,0.95), 0 0 40px -16px rgba(79,227,255,0.6)' }}>
+    <div className="fixed inset-0 z-[150] bg-black/50 flex items-start justify-center pt-[12vh] px-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div role="dialog" aria-label="Search" className="w-full max-w-[640px] rounded-[16px] overflow-hidden pop-in" style={{ background: 'var(--color-card)', boxShadow: '0 30px 80px -20px rgba(0,0,0,0.9)' }}>
         <div className="flex items-center gap-3 px-5 h-14 border-b border-white/10">
           <Search size={18} className="text-accent shrink-0" />
           <input

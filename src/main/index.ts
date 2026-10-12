@@ -44,7 +44,6 @@ let hotkeySignature = ''
 let digest: DailyDigest | null = null
 let account: CloudAccount
 let quitting = false
-let currentMaterial: 'acrylic' | 'none' = 'none'
 
 const TITLEBAR = { color: '#00000000', symbolColor: '#c3c5cc', height: 44 }
 
@@ -58,8 +57,9 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 660,
     show: false,
-    backgroundColor: settings.get().app.windowGlass && canAcrylic ? '#00000000' : '#0c0c0f',
-    backgroundMaterial: settings.get().app.windowGlass && canAcrylic ? 'acrylic' : 'none',
+    // Solid window: the flat design has nothing to show through it.
+    backgroundColor: '#121215',
+    backgroundMaterial: 'none',
     titleBarStyle: 'hidden',
     titleBarOverlay: TITLEBAR,
     icon: nativeImage.createFromPath(iconPath(256)),
@@ -300,14 +300,6 @@ app.whenReady().then(async () => {
     send('settings-changed', s)
     mini?.send('settings-changed', s)
     updateMini()
-    if (win && canAcrylic) {
-      const want = s.app.windowGlass ? 'acrylic' : 'none'
-      if (want !== currentMaterial) {
-        currentMaterial = want
-        win.setBackgroundColor(s.app.windowGlass ? '#00000000' : '#0c0c0f')
-        win.setBackgroundMaterial(want)
-      }
-    }
   })
 
   /** Make a Discord-sized copy if needed, post it, remember it. */
@@ -558,7 +550,6 @@ app.whenReady().then(async () => {
     isRunning: () => recorder.status.running
   })
 
-  currentMaterial = settings.get().app.windowGlass && canAcrylic ? 'acrylic' : 'none'
   createWindow()
   registerHotkey(settings.get())
   scheduler.start()

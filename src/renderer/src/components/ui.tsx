@@ -28,15 +28,11 @@ export function Toggle({ checked, onChange, label, hint, size = 'md', ariaLabel 
         aria-checked={checked}
         aria-label={label ?? ariaLabel}
         onClick={() => onChange(!checked)}
-        className={`mt-0.5 relative ${w} rounded-full transition-all duration-300 shrink-0 border ${checked ? 'border-white/40' : 'border-white/12 group-hover:border-white/25'}`}
-        style={{
-          background: checked ? 'linear-gradient(180deg, #8ff1ff, #2bb8ff)' : 'rgba(0,0,0,0.45)',
-          boxShadow: checked ? 'inset 0 1px 1px rgba(255,255,255,0.8), 0 0 18px -2px rgba(79,227,255,0.8)' : 'inset 0 1px 3px rgba(0,0,0,0.5)'
-        }}
+        className={`mt-0.5 relative ${w} rounded-full transition-colors duration-200 shrink-0 ${checked ? 'bg-accent' : 'bg-[#3a3a41] group-hover:bg-[#45454d]'}`}
       >
         <span
           className={`absolute ${knob} rounded-full transition-all duration-300 ${checked ? on : 'left-[2px]'}`}
-          style={{ background: 'radial-gradient(circle at 35% 30%, #fff, #e6f6ff 55%, #c5e6f7)', boxShadow: '0 2px 6px rgba(0,0,0,0.45), inset 0 -1px 1px rgba(0,0,0,0.12)', transitionTimingFunction: 'var(--ease-spring)' }}
+          style={{ background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.35)', transitionTimingFunction: 'var(--ease-out)' }}
         />
       </button>
       {label && (
@@ -71,17 +67,16 @@ export function Slider({ value, min, max, step = 1, onChange, format, label, hin
 export function Segmented<T extends string | number>({ value, options, onChange, ariaLabel }: { value: T; options: { value: T; label: ReactNode; title?: string }[]; onChange: (v: T) => void; ariaLabel?: string }) {
   const idx = Math.max(0, options.findIndex((o) => o.value === value))
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="relative inline-flex p-1 rounded-full w-full border border-white/10" style={{ background: 'rgba(0,0,0,0.4)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.45)' }}>
+    <div role="radiogroup" aria-label={ariaLabel} className="relative inline-flex p-1 rounded-[12px] w-full bg-[#1a1a1f]">
       {/* Sliding glass lens behind the selected option */}
       <span
         aria-hidden
-        className="absolute top-1 bottom-1 rounded-full liquid transition-all duration-300"
+        className="absolute top-1 bottom-1 rounded-[9px] transition-all duration-200"
         style={{
           left: `calc(${(idx / options.length) * 100}% + 4px)`,
           width: `calc(${100 / options.length}% - 8px)`,
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08))',
-          boxShadow: 'inset 0 1px 0.5px rgba(255,255,255,0.6), inset 0 -1px 0.5px rgba(255,255,255,0.1), 0 4px 14px -4px rgba(0,0,0,0.6), 0 0 14px -4px rgba(79,227,255,0.5)',
-          transitionTimingFunction: 'var(--ease-spring)'
+          background: '#34343b',
+          transitionTimingFunction: 'var(--ease-out)'
         }}
       />
       {options.map((o) => (
@@ -91,7 +86,7 @@ export function Segmented<T extends string | number>({ value, options, onChange,
           aria-checked={value === o.value}
           title={o.title}
           onClick={() => onChange(o.value)}
-          className={`relative z-10 flex-1 h-8 px-3 rounded-full text-sm font-medium transition-colors duration-200 ${value === o.value ? 'text-ink' : 'text-ink-3 hover:text-ink-2'}`}
+          className={`relative z-10 flex-1 h-8 px-3 rounded-[9px] text-sm font-medium transition-colors duration-200 ${value === o.value ? 'text-ink' : 'text-ink-3 hover:text-ink-2'}`}
         >
           {o.label}
         </button>
@@ -123,15 +118,8 @@ export function IconOrb({ children, tone = 'cyan', size = 36 }: { children: Reac
   const c = { cyan: '79,227,255', violet: '155,123,255', warn: '255,200,87', ok: '78,242,176', bad: '255,107,139', neutral: '180,195,217' }[tone]
   return (
     <span
-      className="grid place-items-center shrink-0 rounded-[12px] border"
-      style={{
-        width: size,
-        height: size,
-        color: `rgb(${c})`,
-        borderColor: `rgba(${c},0.35)`,
-        background: `radial-gradient(120% 120% at 30% 20%, rgba(${c},0.32), rgba(${c},0.06) 60%, rgba(255,255,255,0.03))`,
-        boxShadow: `inset 0 1px 0.5px rgba(255,255,255,0.45), 0 0 18px -6px rgba(${c},0.8)`
-      }}
+      className="grid place-items-center shrink-0 rounded-[10px]"
+      style={{ width: size, height: size, color: `rgb(${c})`, background: `rgba(${c},0.12)` }}
     >
       {children}
     </span>
@@ -157,7 +145,7 @@ export function LevelMeter({ db, label, threshold }: { db?: number; label: strin
               className="flex-1 rounded-[3px] transition-[background-color,box-shadow] duration-100"
               style={{
                 background: on ? `rgba(${color},0.95)` : 'rgba(255,255,255,0.06)',
-                boxShadow: on ? `0 0 8px rgba(${color},0.7)` : 'inset 0 1px 1px rgba(0,0,0,0.4)',
+                boxShadow: 'none',
                 outline: i === thIdx ? '1px solid rgba(255,255,255,0.6)' : undefined,
                 outlineOffset: 1
               }}
@@ -175,8 +163,7 @@ export function RingGauge({ value, max, size = 132, label, sub, tone = 'cyan' }:
   const r = size / 2 - 12
   const c = 2 * Math.PI * r
   const pct = max ? Math.max(0, Math.min(1, value / max)) : 0
-  const col = tone === 'cyan' ? '#4fe3ff' : '#9b7bff'
-  const ticks = 60
+  const col = tone === 'cyan' ? 'var(--color-accent)' : '#9b7bff'
   const mid = size / 2
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
@@ -187,18 +174,12 @@ export function RingGauge({ value, max, size = 132, label, sub, tone = 'cyan' }:
             <stop offset="100%" stopColor={col} />
           </linearGradient>
         </defs>
-        {Array.from({ length: ticks }, (_, i) => {
-          const a = (i / ticks) * Math.PI * 2
-          const r1 = r + 7
-          const r2 = r + (i % 5 === 0 ? 11 : 9)
-          return <line key={i} x1={mid + Math.cos(a) * r1} y1={mid + Math.sin(a) * r1} x2={mid + Math.cos(a) * r2} y2={mid + Math.sin(a) * r2} stroke={i / ticks < pct ? col : 'rgba(255,255,255,0.14)'} strokeWidth={1.2} />
-        })}
         <circle cx={mid} cy={mid} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={6} />
-        <circle cx={mid} cy={mid} r={r} fill="none" stroke="url(#cf-ring)" strokeWidth={6} strokeLinecap="round" strokeDasharray={`${c * pct} ${c}`} style={{ filter: `drop-shadow(0 0 6px ${col})`, transition: 'stroke-dasharray 0.6s var(--ease-out)' }} />
+        <circle cx={mid} cy={mid} r={r} fill="none" stroke={col} strokeWidth={6} strokeLinecap="round" strokeDasharray={`${c * pct} ${c}`} style={{ transition: 'stroke-dasharray 0.6s var(--ease-out)' }} />
       </svg>
       <div className="absolute inset-0 grid place-items-center text-center">
         <div>
-          <div className="font-hud text-[26px] font-bold leading-none glow-text tabular">{label}</div>
+          <div className="font-hud text-[26px] font-bold leading-none tabular">{label}</div>
           {sub && <div className="font-hud text-[9px] uppercase tracking-[0.18em] text-ink-3 mt-1.5">{sub}</div>}
         </div>
       </div>
@@ -230,14 +211,14 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
     live: 'bg-live/12 text-live border-live/40',
     accent: 'bg-violet/15 text-[#c9b8ff] border-violet/40'
   }[tone]
-  return <span className={`inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full font-hud text-[10px] font-medium uppercase tracking-[0.12em] border backdrop-blur ${t}`} style={{ boxShadow: 'inset 0 1px 0.5px rgba(255,255,255,0.25)' }}>{children}</span>
+  return <span className={`inline-flex items-center gap-1.5 px-2 h-6 rounded-md text-[11px] font-semibold uppercase tracking-[0.06em] border ${t}`}>{children}</span>
 }
 
 export function Progress({ value, tone = 'accent' }: { value: number; tone?: 'accent' | 'live' | 'ok' }) {
-  const bg = { accent: '#4fe3ff', live: '#4fe3ff', ok: '#4ef2b0' }[tone]
+  const bg = { accent: 'var(--color-accent)', live: 'var(--color-accent)', ok: '#4ef2b0' }[tone]
   return (
     <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)', boxShadow: 'inset 0 1px 1px rgba(0,0,0,0.4)' }}>
-      <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`, background: `linear-gradient(90deg, #9b7bff, ${bg})`, boxShadow: `0 0 10px ${bg}` }} />
+      <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`, background: bg }} />
     </div>
   )
 }
@@ -251,8 +232,8 @@ export function Modal({ open, onClose, children, width = 'max-w-2xl', title, hid
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-[100] bg-[rgba(2,6,16,0.55)] backdrop-blur-md grid place-items-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" className={`card w-full ${width} max-h-[calc(100vh-48px)] overflow-hidden flex flex-col pop-in shadow-[var(--shadow-pop)]`} style={{ background: 'linear-gradient(160deg, rgba(24,24,28,0.94), rgba(14,14,17,0.96))' }}>
+    <div className="fixed inset-0 z-[100] bg-black/60 grid place-items-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" className={`card w-full ${width} max-h-[calc(100vh-48px)] overflow-hidden flex flex-col pop-in shadow-[var(--shadow-pop)]`} style={{ background: 'var(--color-card)' }}>
         {!hideHeader && (
           <div className="flex items-center justify-between px-5 h-14 border-b border-line shrink-0">
             <div className="font-semibold truncate">{title}</div>

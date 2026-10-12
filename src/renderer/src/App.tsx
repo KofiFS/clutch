@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Film, LayoutDashboard, Monitor, Pause, Play, Search, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
+import { Film, LayoutDashboard, Monitor, PanelLeftClose, PanelLeftOpen, Pause, Play, Search, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
 import { StoreProvider, useStore, type Page } from './lib/store'
 import { ToastProvider } from './components/Toasts'
 import { GameIcon, Kbd } from './components/ui'
@@ -49,7 +49,7 @@ function StatusStrip() {
   return (
     <div className="flex items-center gap-1 ml-6 min-w-0">
       <span className={`flex items-center gap-2 h-7 px-3 rounded-full text-[12px] font-medium shrink-0 ${paused ? 'text-warn bg-warn/10' : long ? 'text-[#ff8aa1] bg-[#ff3b5c]/12' : status.running ? 'text-live bg-live/10' : 'text-ink-2 bg-white/[0.05]'}`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${paused ? 'bg-warn' : long ? 'bg-[#ff3b5c] shadow-[0_0_8px_#ff3b5c]' : status.running ? 'bg-live shadow-[0_0_8px_#4fe3ff]' : 'bg-ink-3'}`} />
+        <span className={`w-1.5 h-1.5 rounded-full ${paused ? 'bg-warn' : long ? 'bg-[#ff3b5c]' : status.running ? 'bg-live' : 'bg-ink-3'}`} />
         <span className="tabular">{state}</span>
         {long && long.bookmarks > 0 && <span className="text-ink-3">· {long.bookmarks} bookmark{long.bookmarks > 1 ? 's' : ''}</span>}
       </span>
@@ -67,45 +67,62 @@ function StatusStrip() {
 
 function TitleBar({ live, onSearch }: { live: boolean; onSearch: () => void }) {
   return (
-    <div className="drag h-11 shrink-0 flex items-center px-5 gap-2.5 select-none relative z-10">
-      <img src="./icon.png" alt="Clutch" title="Clutch" className="w-6 h-6" style={{ filter: "drop-shadow(0 0 8px rgba(40,140,255,0.7))" }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
+    <div className="drag h-14 shrink-0 flex items-center pl-6 gap-2.5 select-none relative z-10">
       <StatusStrip />
       {live && <span className="sr-only">Recording</span>}
       <button
         onClick={onSearch}
-        className="no-drag ml-auto mr-[150px] flex items-center gap-2 h-8 w-[300px] max-w-[30vw] px-3 rounded-full text-[13px] text-ink-3 hover:text-ink-2 border border-white/12 transition-colors"
-        style={{ background: 'rgba(0,0,0,0.4)', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.4)' }}
+        className="no-drag ml-auto mr-[150px] flex items-center gap-2.5 h-9 w-[380px] max-w-[34vw] px-3.5 rounded-full text-[13px] text-ink-3 hover:text-ink-2 border border-white/15 hover:border-white/30 transition-colors"
         aria-label="Search (Ctrl+K)"
       >
-        <Search size={14} />
-        <span className="flex-1 text-left truncate">Search Clutch…</span>
-        <kbd className="kbd h-5 min-w-5 text-[9px]">Ctrl</kbd><kbd className="kbd h-5 min-w-5 text-[9px]">K</kbd>
+        <Search size={15} />
+        <span className="flex-1 text-left truncate">Search</span>
+        <kbd className="kbd h-5 min-w-5 text-[10px]">Ctrl</kbd><kbd className="kbd h-5 min-w-5 text-[10px]">K</kbd>
       </button>
     </div>
   )
 }
 
-/** Icon-only rail button with a glass tooltip to the right (label is also the accessible name). */
-function RailButton({ label, hint, onClick, active, variant, disabled, children }: { label: string; hint?: string; onClick: () => void; active?: boolean; variant?: 'primary' | 'live'; disabled?: boolean; children: ReactNode }) {
-  const base = variant === 'primary' ? 'btn-primary' : variant === 'live' ? 'btn-live' : ''
+/** Hover label for the collapsed sidebar (the label is also the accessible name). */
+function Tip({ label, hint, show }: { label: string; hint?: string; show: boolean }) {
+  if (!show) return null
+  return (
+    <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50 whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150">
+      <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium bg-[#2a2a30] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.8)]">
+        {label}
+        {hint && <span className="text-ink-3 text-xs font-normal">{hint}</span>}
+      </span>
+    </span>
+  )
+}
+
+/** Sidebar item: icon + label like a launcher; icon only (with a hover label) when collapsed. */
+function NavItem({ label, hint, icon, active, collapsed, onClick }: { label: string; hint?: string; icon: ReactNode; active?: boolean; collapsed: boolean; onClick: () => void }) {
   return (
     <div className="relative group">
       <button
+        onClick={onClick}
         aria-label={label}
         aria-current={active ? 'page' : undefined}
-        disabled={disabled}
-        onClick={onClick}
-        className={`grid place-items-center w-12 h-12 rounded-2xl transition-all duration-200 ${base ? `${base} !px-0 !h-12 !rounded-2xl` : active ? 'liquid' : 'hover:bg-white/[0.07]'}`}
-        style={active && !base ? { background: 'linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06))', boxShadow: 'inset 0 1px 0.5px rgba(255,255,255,0.55), inset 0 -1px 0.5px rgba(255,255,255,0.08), 0 8px 24px -12px rgba(0,0,0,0.8), 0 0 22px -8px rgba(79,227,255,0.7)' } : undefined}
+        className={`w-full flex items-center gap-3.5 h-12 rounded-xl text-[15px] font-medium transition-colors ${collapsed ? 'justify-center px-0' : 'px-4'} ${active ? 'bg-white/[0.09] text-ink' : 'text-ink-2 hover:bg-white/[0.05] hover:text-ink'}`}
       >
+        <span className="shrink-0">{icon}</span>
+        {!collapsed && <span className="truncate">{label}</span>}
+      </button>
+      <Tip label={label} hint={hint} show={collapsed} />
+    </div>
+  )
+}
+
+/** Small square action button for the sidebar's recording controls. */
+function ActionButton({ label, hint, onClick, primary, disabled, collapsed, children }: { label: string; hint?: string; onClick: () => void; primary?: boolean; disabled?: boolean; collapsed: boolean; children: ReactNode }) {
+  return (
+    <div className="relative group flex-1">
+      <button aria-label={label} title={collapsed ? undefined : hint ? `${label} (${hint})` : label} disabled={disabled} onClick={onClick}
+        className={`w-full h-10 ${primary ? 'btn-primary' : 'btn'} !px-0 !rounded-[10px]`}>
         {children}
       </button>
-      <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50 whitespace-nowrap opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 transition-all duration-150">
-        <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[13px] font-medium border border-white/15 backdrop-blur-xl shadow-[var(--shadow-pop)]" style={{ background: "rgba(20,20,24,0.92)", boxShadow: "inset 0 1px 0.5px rgba(255,255,255,0.25), 0 12px 30px -10px rgba(0,0,0,0.9)" }}>
-          {label}
-          {hint && <span className="text-ink-3 text-xs font-normal">{hint}</span>}
-        </span>
-      </span>
+      <Tip label={label} hint={hint} show={collapsed} />
     </div>
   )
 }
@@ -113,6 +130,8 @@ function RailButton({ label, hint, onClick, active, variant, disabled, children 
 function Shell() {
   const { page, setPage, status, start, stop, clipNow, settings, game, viewerClipId, openClip } = useStore()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('cf.sidebar.collapsed') === '1' } catch { return false } })
+  useEffect(() => { try { localStorage.setItem('cf.sidebar.collapsed', collapsed ? '1' : '0') } catch { /* private mode */ } }, [collapsed])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -129,73 +148,80 @@ function Shell() {
   // Visual effects level + OS window glass flags live on <html> so plain CSS can react.
   useEffect(() => {
     document.documentElement.dataset.fx = settings?.app.effects ?? 'full'
-    document.documentElement.dataset.windowGlass = settings?.app.windowGlass ? 'on' : 'off'
-  }, [settings?.app.effects, settings?.app.windowGlass])
+  }, [settings?.app.effects])
 
   if (!settings) return <div className="h-full grid place-items-center text-ink-3"><Backdrop />Loading…</div>
   if (!settings.app.onboarded) return <><Backdrop /><Onboarding /></>
 
   const live = status.running
   const paused = !!status.paused
+  const ready = live && status.bufferedSeconds !== undefined ? `${Math.min(status.bufferedSeconds, settings.capture.bufferSeconds)}s ready to clip` : undefined
+  const stateText = paused ? 'Paused' : live ? 'Recording' : status.starting ? 'Starting…' : 'Standby'
+  const gameIcon = game && game.isGame && game.icon ? `cf://file/${encodeURIComponent(game.icon.replace(/\\/g, '/'))}` : undefined
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex">
       <Backdrop live={live} />
-      <TitleBar live={live} onSearch={() => setSearchOpen(true)} />
-      <div className="flex-1 flex min-h-0 px-3 pb-3 gap-3">
-        <aside className="card relative z-30 w-[76px] shrink-0 flex flex-col items-center py-3">
-          <nav className="relative z-[2] flex flex-col items-center gap-1.5" aria-label="Main">
-            {NAV.map(({ id, label, icon: Icon, key }) => {
-              const active = page === id
-              return (
-                <RailButton key={id} label={label} hint={`Ctrl+${key}`} onClick={() => setPage(id)} active={active}>
-                  <Icon size={20} className={active ? 'text-accent drop-shadow-[0_0_6px_rgba(79,227,255,0.9)]' : 'text-ink-2 group-hover:text-ink'} />
-                </RailButton>
-              )
-            })}
-          </nav>
+      <aside className={`sidebar relative z-30 shrink-0 flex flex-col ${collapsed ? 'w-[76px] px-2.5' : 'w-[232px] px-3.5'} pb-3 transition-[width] duration-200`}>
+        {/* Logo row doubles as a window drag handle */}
+        <div className={`drag h-14 shrink-0 flex items-center ${collapsed ? 'justify-center' : 'px-3'}`}>
+          <img src="./icon.png" alt="Clutch" title="Clutch" className="w-8 h-8" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} />
+        </div>
+        <nav className="flex flex-col gap-1 mt-4" aria-label="Main">
+          {NAV.map(({ id, label, icon: Icon, key }) => (
+            <NavItem key={id} label={label} hint={`Ctrl+${key}`} active={page === id} collapsed={collapsed} onClick={() => setPage(id)} icon={<Icon size={20} />} />
+          ))}
+        </nav>
 
-          <div className="relative z-[2] mt-auto flex flex-col items-center gap-2.5">
-            {/* Status orb: the current app/game, ringed by recording state */}
-            <RailButton
-              label={paused ? 'Recording paused' : live ? `Recording${game ? ` · ${game.name}` : ''}` : status.starting ? 'Starting…' : `Standby${game ? ` · ${game.name}` : ''}`}
-              hint={live && status.bufferedSeconds !== undefined ? `${Math.min(status.bufferedSeconds, settings.capture.bufferSeconds)}s ready to clip` : status.recordingBlocked}
-              onClick={() => setPage('dashboard')}
-            >
-              <span className={`relative grid place-items-center w-9 h-9 rounded-full ${paused ? 'ring-2 ring-warn' : live ? 'ring-2 ring-live shadow-[0_0_14px_-2px_#4fe3ff]' : status.starting ? 'ring-2 ring-warn' : 'ring-1 ring-white/15'}`}>
-                {game && !game.isGame ? <Monitor size={18} className="text-ink-2" /> : game ? <GameIcon src={game.icon ? `cf://file/${encodeURIComponent(game.icon.replace(/\\/g, '/'))}` : undefined} name={game.name} size={22} /> : <span className="w-2 h-2 rounded-full bg-ink-3" />}
-                {status.recordingBlocked && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-warn ring-2 ring-[#101013]" />}
+        <div className="mt-auto flex flex-col gap-3">
+          {/* What Clutch is doing, and the controls for it */}
+          <div className={`rounded-xl bg-white/[0.04] ${collapsed ? 'p-1.5' : 'p-3'} flex flex-col gap-2.5`}>
+            <button onClick={() => setPage('dashboard')} className={`relative group flex items-center gap-3 text-left ${collapsed ? 'justify-center py-1' : ''}`} aria-label={`${stateText}${game ? ` · ${game.name}` : ''}`}>
+              <span className="relative grid place-items-center w-9 h-9 rounded-lg bg-white/[0.06] shrink-0">
+                {game && !game.isGame ? <Monitor size={17} className="text-ink-2" /> : game ? <GameIcon src={gameIcon} name={game.name} size={22} /> : <Monitor size={17} className="text-ink-3" />}
+                <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--color-sidebar)] ${paused || status.starting ? 'bg-warn' : live ? 'bg-[#ff3b5c]' : 'bg-ink-3'}`} />
               </span>
-            </RailButton>
-            {live || paused ? (
-              <>
-                {paused ? (
-                  <RailButton label="Resume recording" onClick={() => void window.cf.buffer.togglePause()} variant="primary">
-                    <Play size={20} className="ml-0.5" />
-                  </RailButton>
-                ) : (
-                  <>
-                    <RailButton label="Clip now" hint={settings.capture.clipHotkey || undefined} onClick={() => void clipNow()} variant="live">
-                      <Zap size={20} />
-                    </RailButton>
-                    <RailButton label="Pause recording" hint="Keeps what is recorded so far" onClick={() => void window.cf.buffer.togglePause()}>
-                      <Pause size={17} className="text-ink-2 group-hover:text-ink" />
-                    </RailButton>
-                  </>
-                )}
-                <RailButton label="Stop recording" onClick={() => void stop()}>
-                  <Square size={16} className="text-ink-2 group-hover:text-ink" />
-                </RailButton>
-              </>
-            ) : (
-              <RailButton label={status.starting ? 'Starting…' : 'Start recording'} onClick={() => void start()} variant="primary" disabled={status.starting}>
-                <Play size={20} className="ml-0.5" />
-              </RailButton>
-            )}
+              {!collapsed && (
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold text-ink truncate">{stateText}</span>
+                  <span className="block text-[12px] text-ink-3 truncate">{status.recordingBlocked ? 'Not clipping here' : ready ?? (game ? game.name : 'Waiting for a game')}</span>
+                </span>
+              )}
+              <Tip label={`${stateText}${game ? ` · ${game.name}` : ''}`} hint={ready ?? status.recordingBlocked} show={collapsed} />
+            </button>
+            <div className={`flex gap-1.5 ${collapsed ? 'flex-col' : ''}`}>
+              {live || paused ? (
+                <>
+                  {paused ? (
+                    <ActionButton label="Resume recording" onClick={() => void window.cf.buffer.togglePause()} primary collapsed={collapsed}><Play size={17} /></ActionButton>
+                  ) : (
+                    <>
+                      <ActionButton label="Clip now" hint={settings.capture.clipHotkey || undefined} onClick={() => void clipNow()} primary collapsed={collapsed}><Zap size={17} /></ActionButton>
+                      <ActionButton label="Pause recording" onClick={() => void window.cf.buffer.togglePause()} collapsed={collapsed}><Pause size={16} /></ActionButton>
+                    </>
+                  )}
+                  <ActionButton label="Stop recording" onClick={() => void stop()} collapsed={collapsed}><Square size={14} /></ActionButton>
+                </>
+              ) : (
+                <ActionButton label={status.starting ? 'Starting…' : 'Start recording'} onClick={() => void start()} primary disabled={status.starting} collapsed={collapsed}>
+                  <Play size={17} />{!collapsed && <span className="text-[13px] font-semibold">Start recording</span>}
+                </ActionButton>
+              )}
+            </div>
           </div>
-        </aside>
+          <div className="relative group">
+            <button onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} className={`h-10 rounded-xl text-ink-3 hover:text-ink hover:bg-white/[0.05] transition-colors flex items-center gap-3 ${collapsed ? 'w-full justify-center' : 'px-4 w-full'}`}>
+              {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+              {!collapsed && <span className="text-[13px]">Collapse</span>}
+            </button>
+            <Tip label="Expand sidebar" show={collapsed} />
+          </div>
+        </div>
+      </aside>
 
-        <main className="flex-1 min-w-0 overflow-y-auto rounded-[var(--radius-lg)]">
-          <div className="max-w-[1180px] mx-auto px-5 py-4 fade-in" key={page}>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <TitleBar live={live} onSearch={() => setSearchOpen(true)} />
+        <main className="flex-1 min-h-0 overflow-y-auto">
+          <div className="max-w-[1680px] mx-auto px-6 pt-2 pb-8 fade-in" key={page}>
             {page === 'dashboard' && <Dashboard />}
             {page === 'library' && <Library />}
             {page === 'rules' && <Rules />}

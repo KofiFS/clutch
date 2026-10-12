@@ -143,8 +143,6 @@ export default function Settings() {
 
       <AudioSources />
 
-      <Appearance />
-
       <Section title="Notifications & window" icon={<Bell size={16} />}>
         <div className="grid grid-cols-2 gap-x-8 gap-y-4">
           <div className="flex items-start gap-2">
@@ -319,31 +317,6 @@ function DiscordSettings() {
   )
 }
 
-function Appearance() {
-  const { settings, save } = useStore()
-  const [canAcrylic, setCanAcrylic] = useState<boolean | null>(null)
-  useEffect(() => { void window.cf.system.canAcrylic().then(setCanAcrylic) }, [])
-  if (!settings) return null
-  const a = settings.app
-  return (
-    <Section title="Appearance" icon={<Palette size={16} />} desc="Liquid-glass panels with a light HUD layer. Effects only cost GPU while the window is open; in the tray they cost nothing.">
-      <div className="grid grid-cols-2 gap-6">
-        <Field label="Visual effects" hint={a.effects === 'full' ? 'Frosted glass, light rims and HUD details.' : 'Solid panels, no blur. Best for older GPUs or laptops on battery.'}>
-          <Segmented value={a.effects} onChange={(effects) => void save({ app: { ...a, effects } })} options={[{ value: 'full' as const, label: 'Liquid glass' }, { value: 'lite' as const, label: 'Lite' }]} ariaLabel="Visual effects" />
-        </Field>
-        <div className="pt-6">
-          <Toggle
-            checked={a.windowGlass}
-            onChange={(windowGlass) => void save({ app: { ...a, windowGlass } })}
-            label="See-through window (Windows 11 acrylic)"
-            hint={canAcrylic === false ? 'Needs Windows 11 22H2 or newer.' : 'Your desktop wallpaper shows through the window, frosted. Windows turns it solid while the window is inactive.'}
-          />
-        </div>
-      </div>
-    </Section>
-  )
-}
-
 const fmtLen = (n: number) => (n >= 60 && n % 60 === 0 ? `${n / 60} min` : `${n}s`)
 
 /** Change clip length without leaving the game: step hotkeys + extra hotkeys with their own lengths. */
@@ -382,7 +355,7 @@ function InGameLength() {
             disabled={n > c.bufferSeconds}
             title={n > c.bufferSeconds ? `Longer than your ${c.bufferSeconds}s buffer` : `Clip the last ${fmtLen(n)}`}
             onClick={() => void setCap({ preSeconds: n })}
-            className={`chip h-8 px-3 font-hud text-[11px] transition-all disabled:opacity-35 ${c.preSeconds === n ? 'text-ink border-accent/60 shadow-[0_0_14px_-4px_rgba(79,227,255,0.8)]' : 'hover:text-ink'}`}
+            className={`chip h-8 px-3 font-hud text-[11px] transition-all disabled:opacity-35 ${c.preSeconds === n ? 'text-ink border-accent/60' : 'hover:text-ink'}`}
           >
             {fmtLen(n)}
           </button>

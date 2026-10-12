@@ -75,7 +75,7 @@ export function CaptureAreaSettings() {
                 role="radio"
                 aria-checked={area.kind === kind}
                 onClick={() => void choose(kind)}
-                className={`card-2 flex flex-col items-center gap-2 py-3.5 px-2 text-sm font-medium transition-all ${area.kind === kind ? 'shadow-[0_0_0_1px_rgba(79,227,255,0.6),0_0_24px_-6px_rgba(79,227,255,0.8)] text-ink' : 'text-ink-2 hover:text-ink'}`}
+                className={`card-2 flex flex-col items-center gap-2 py-3.5 px-2 text-sm font-medium transition-all ${area.kind === kind ? ' text-ink' : 'text-ink-2 hover:text-ink'}`}
               >
                 <Icon size={20} className={area.kind === kind ? 'text-accent' : ''} />
                 {label}
@@ -123,7 +123,7 @@ export function CaptureAreaSettings() {
           <span className="label">Preview</span>
           <div className="relative rounded-xl overflow-hidden border border-white/12" style={{ aspectRatio: `${W} / ${H}`, background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 8px, transparent 8px 16px), rgba(0,0,0,0.5)' }}>
             {box ? (
-              <div className="absolute rounded-md border-2 border-accent shadow-[0_0_18px_rgba(79,227,255,0.6)]" style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, background: 'rgba(79,227,255,0.12)' }} />
+              <div className="absolute rounded-md border-2 border-accent" style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, background: 'rgba(38,187,255,0.12)' }} />
             ) : (
               <div className="absolute inset-0 grid place-items-center text-center px-3">
                 <div className="flex flex-col items-center gap-1.5 text-xs text-ink-2">
