@@ -12,7 +12,7 @@ const TRIGGER_ICON: Record<TriggerSource, typeof Eye> = { hotkey: Keyboard, visi
 const TRIGGER_LABEL: Record<TriggerSource, string> = { hotkey: 'Hotkey', vision: 'AI', voice: 'Voice', hype: 'Hype', manual: 'Manual', long: 'Long' }
 
 export default function Library() {
-  const { libraryVersion, settings, openClip, viewerClipId, libraryPreset, setLibraryPreset } = useStore()
+  const { libraryVersion, settings, openClip, viewerClipId, libraryPreset, setLibraryPreset, goTo } = useStore()
   const toast = useToast()
   const [confirm, confirmDialog] = useConfirm()
   const [clips, setClips] = useState<Clip[]>([])
@@ -275,9 +275,9 @@ export default function Library() {
                 <input autoFocus className="input h-8 w-44 text-xs" placeholder="funny, clutch…" value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') bulkTag(); if (e.key === 'Escape') setTagDraft(null) }} onBlur={bulkTag} />
               )}
               <button className="btn-sm" onClick={() => void joinSelected()} disabled={selected.size < 2 || !!joining} title="Join the selected clips into one video, oldest first">{joining ? <Loader2 size={13} className="animate-spin" /> : <Combine size={13} />} {joining ?? 'Join'}</button>
-              <button className="btn-sm" onClick={() => void bulkDiscord()} disabled={!settings?.discord.webhookUrl} title={settings?.discord.webhookUrl ? '' : 'Add a Discord webhook in Settings first'}><MessageSquare size={13} /> Discord</button>
+              <button className="btn-sm" onClick={() => (settings?.discord.webhookUrl ? void bulkDiscord() : goTo('settings', 'Discord'))} title={settings?.discord.webhookUrl ? '' : 'Connect Discord first (takes you there)'}><MessageSquare size={13} /> Discord</button>
               <button className="btn-sm" onClick={() => void exportSelected()} disabled={!!exporting} title="Save normal MP4 copies that play everywhere into a folder you pick">{exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} {exporting ?? 'Save as MP4'}</button>
-              <button className="btn-sm" onClick={bulkUpload} disabled={!settings?.upload.youtube.connected} title={settings?.upload.youtube.connected ? '' : 'Connect YouTube first'}><UploadCloud size={13} /> Upload</button>
+              <button className="btn-sm" onClick={() => (settings?.upload.youtube.connected ? bulkUpload() : goTo('settings', 'Accounts'))} title={settings?.upload.youtube.connected ? '' : 'Connect YouTube first (takes you there)'}><UploadCloud size={13} /> Upload</button>
               <button className="btn-sm hover:text-bad" onClick={() => void trashSelected()}><Trash2 size={13} /> Delete <Kbd>Del</Kbd></button>
             </>
           ) : (

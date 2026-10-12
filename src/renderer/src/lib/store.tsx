@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AccountState, ActivityEvent, BufferStatus, Clip, GameInfo, Settings } from '../../../shared/types'
 import { loopbackActive, startLoopback, stopLoopback } from './loopback'
+import { revealWhenReady } from './reveal'
 import { useToast } from '../components/Toasts'
 
 export type Page = 'dashboard' | 'library' | 'rules' | 'uploads' | 'settings'
@@ -15,6 +16,8 @@ interface Store {
   uploadsVersion: number
   page: Page
   setPage: (p: Page) => void
+  /** Go to a page and scroll to (and highlight) the setting with this title. Closes dialogs on the way. */
+  goTo: (p: Page, find?: string) => void
   /** Clip currently open in the viewer, if any. */
   viewerClipId: string | null
   /** One-shot filter for the Clips page (set by search / tray), cleared once applied. */
@@ -52,6 +55,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [proOpen, setProOpen] = useState(false)
   const signIn = useCallback((reason?: string) => setSignInReason(reason ?? 'Sign in to use cloud features.'), [])
   const closeSignIn = useCallback(() => setSignInReason(null), [])
+  const goTo = useCallback((p: Page, find?: string) => {
+    setSignInReason(null)
+    setProOpen(false)
+    openClip(null)
+    setPage(p)
+    if (find) revealWhenReady(find)
+    else setTimeout(() => document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' }), 150)
+  }, [])
   const [loopbackError, setLoopbackError] = useState<string | null>(null)
   const toast = useToast()
   // Updates download in the background; offer a restart once (never restart on our own).
@@ -124,7 +135,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const clipNow = useCallback(async () => { await window.cf.buffer.clipNow() }, [])
 
   const value = useMemo<Store>(
-    () => ({ settings, status, activity, game, libraryVersion, uploadsVersion, page, setPage, viewerClipId, openClip, libraryPreset, setLibraryPreset, account, signIn, signInReason, closeSignIn, proOpen, setProOpen, save, start, stop, clipNow, loopbackError }),
+    () => ({ settings, status, activity, game, libraryVersion, uploadsVersion, page, setPage, goTo, viewerClipId, openClip, libraryPreset, setLibraryPreset, account, signIn, signInReason, closeSignIn, proOpen, setProOpen, save, start, stop, clipNow, loopbackError }),
     [settings, status, activity, game, libraryVersion, uploadsVersion, page, viewerClipId, libraryPreset, account, signIn, signInReason, closeSignIn, proOpen, save, start, stop, clipNow, loopbackError]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

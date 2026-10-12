@@ -9,6 +9,7 @@ import { CaptureAreaSettings, StorageSettings } from '../components/CaptureAreaS
 import { AudioSources } from '../components/AudioSources'
 import { AccountSection } from '../components/Account'
 import { ImportSettings } from '../components/ImportSettings'
+import { SetupChecklist } from '../components/SetupChecklist'
 import { useToast } from '../components/Toasts'
 import { Badge, Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 
@@ -23,7 +24,7 @@ const ENCODER_LABEL: Record<Encoder, string> = {
 }
 
 export default function Settings() {
-  const { settings, save, status, setPage, signIn } = useStore()
+  const { settings, save, status, goTo, signIn } = useStore()
   const toast = useToast()
   const [devices, setDevices] = useState<string[]>([])
   const [encoders, setEncoders] = useState<{ available: string[]; best: string } | null>(null)
@@ -69,9 +70,11 @@ export default function Settings() {
         <p className="text-ink-3 text-sm mt-1">{status.running ? 'Capture changes apply the next time recording starts.' : 'Quality, audio, notifications and accounts.'}</p>
       </header>
 
+      <SetupChecklist />
+
       <AccountSection />
 
-      <Health onFix={setPage} />
+      <Health onFix={goTo} />
 
       <ImportSettings />
 
@@ -235,7 +238,7 @@ export default function Settings() {
   )
 }
 
-function Health({ onFix }: { onFix: (p: 'settings' | 'rules' | 'uploads') => void }) {
+function Health({ onFix }: { onFix: (p: 'settings' | 'rules' | 'uploads', find?: string) => void }) {
   const { status, settings } = useStore()
   const [items, setItems] = useState<HealthItem[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -255,7 +258,7 @@ function Health({ onFix }: { onFix: (p: 'settings' | 'rules' | 'uploads') => voi
                 <div className="font-medium">{h.label}</div>
                 <div className="text-xs text-ink-3 leading-relaxed break-words">{h.detail}</div>
               </div>
-              {h.ok !== true && h.fix && h.fix !== 'settings' && <button className="btn-sm" onClick={() => onFix(h.fix!)}>Fix</button>}
+              {h.ok !== true && h.fix && <button className="btn-sm" onClick={() => onFix(h.fix!, h.fixFind)}>Fix</button>}
             </li>
           )
         })}

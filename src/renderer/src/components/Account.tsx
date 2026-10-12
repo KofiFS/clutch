@@ -49,7 +49,7 @@ function ProviderButtons({ onDone }: { onDone?: () => void }) {
 }
 
 export function SignInDialog() {
-  const { signInReason, closeSignIn, account } = useStore()
+  const { signInReason, closeSignIn, account, goTo } = useStore()
   return (
     <Modal open={!!signInReason} onClose={closeSignIn} width="max-w-md" hideHeader>
       <div className="p-7 space-y-5">
@@ -58,7 +58,15 @@ export function SignInDialog() {
           <h3 className="text-xl font-semibold">Sign in to Clutch</h3>
           <p className="text-sm text-ink-2 mt-1.5 leading-relaxed">{signInReason}</p>
         </div>
-        {account.serverUrl ? <ProviderButtons onDone={closeSignIn} /> : <p className="text-sm text-warn text-center">Cloud is not set up in this build yet. Add a server under Settings → Account.</p>}
+        {account.serverUrl ? <ProviderButtons onDone={closeSignIn} /> : (
+          <div className="space-y-4">
+            <p className="text-sm text-ink-3 text-center leading-relaxed">Cloud sign-in isn't switched on in this copy of Clutch yet. Recording, clips, Discord and manual YouTube uploads all work without it.</p>
+            <div className="flex gap-2">
+              <button className="btn flex-1" onClick={closeSignIn}>Not now</button>
+              <button className="btn-primary flex-1" onClick={() => goTo('settings', 'Cloud server')}>Open cloud settings</button>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   )
@@ -169,7 +177,7 @@ export function AccountSection() {
 
 /** One sponsored card. Hidden on Pro and when turned off; never shown in game. */
 export function SponsoredCard({ placement }: { placement: 'home' | 'library' }) {
-  const { settings, account, setProOpen, setPage } = useStore()
+  const { settings, account, setProOpen, goTo } = useStore()
   const [ad, setAd] = useState<AdCard | null>(null)
   const enabled = !!settings?.app.showAds && !account.plan?.features.adFree
   useEffect(() => {
@@ -188,7 +196,7 @@ export function SponsoredCard({ placement }: { placement: 'home' | 'library' }) 
         <p className="text-xs text-ink-3 truncate">{ad.body}</p>
       </div>
       <button className="relative z-[2] btn-sm shrink-0" onClick={() => { if (ad.url === 'clutch://pro') { void window.cf.ads.open(ad); setProOpen(true) } else void window.cf.ads.open(ad) }}>{ad.cta}</button>
-      <button className="relative z-[2] text-[11px] text-ink-3 hover:text-ink shrink-0" onClick={() => { setPage('settings'); setTimeout(() => document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' }), 200) }} title="Turn off sponsored cards in Settings → Account">Hide</button>
+      <button className="relative z-[2] text-[11px] text-ink-3 hover:text-ink shrink-0" onClick={() => goTo('settings', 'Show sponsored cards')} title="Turn off sponsored cards (Settings → Account)">Hide</button>
     </aside>
   )
 }

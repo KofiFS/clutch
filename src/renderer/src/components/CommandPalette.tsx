@@ -37,6 +37,7 @@ const SETTINGS: { label: string; page: Page; find: string; keywords?: string }[]
   { label: 'AI / API key', page: 'settings', find: 'AI', keywords: 'anthropic claude key model auto title' },
   { label: 'Account & Clutch Pro', page: 'settings', find: 'Account', keywords: 'login sign in discord google cloud subscription pro plan billing' },
   { label: 'YouTube account', page: 'settings', find: 'Accounts', keywords: 'youtube connect google upload channel' },
+  { label: 'Setup checklist', page: 'settings', find: 'Setup', keywords: 'getting started connect finish onboarding what is left todo' },
   { label: 'Health check', page: 'settings', find: 'Health check', keywords: 'problems diagnose not working fix ffmpeg' },
   { label: 'Hype moments', page: 'rules', find: 'Hype moments', keywords: 'shout laugh loud spike trigger' },
   { label: 'When people talk', page: 'rules', find: 'Only when people talk', keywords: 'voice chat talking trigger' },
@@ -68,23 +69,8 @@ function score(q: string, item: Item): number {
   return 0
 }
 
-/** Scroll to a setting on the current page and briefly highlight it. */
-export function revealText(text: string) {
-  const want = text.toLowerCase()
-  const candidates = [...document.querySelectorAll('main h2, main .label, main label span.text-sm, main .text-sm.font-semibold')]
-  const el = candidates.find((n) => (n.textContent ?? '').trim().toLowerCase() === want) ?? candidates.find((n) => (n.textContent ?? '').trim().toLowerCase().startsWith(want))
-  if (!el) return false
-  const box = el.closest('.card-2, section, label, div.space-y-3') ?? el
-  box.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  box.classList.remove('search-flash')
-  void (box as HTMLElement).offsetWidth
-  box.classList.add('search-flash')
-  setTimeout(() => box.classList.remove('search-flash'), 1800)
-  return true
-}
-
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { settings, save, status, setPage, openClip, start, stop, clipNow, setLibraryPreset } = useStore()
+  const { settings, save, status, setPage, goTo, openClip, start, stop, clipNow, setLibraryPreset } = useStore()
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
   const [clips, setClips] = useState<Clip[]>([])
@@ -105,12 +91,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     return () => clearTimeout(t)
   }, [q, open])
 
-  const goSetting = (page: Page, find: string) => {
-    setPage(page)
-    let tries = 0
-    const attempt = () => { if (!revealText(find) && ++tries < 10) setTimeout(attempt, 120) }
-    setTimeout(attempt, 150)
-  }
+  const goSetting = (page: Page, find: string) => goTo(page, find)
 
   const items = useMemo<Item[]>(() => {
     if (!settings) return []

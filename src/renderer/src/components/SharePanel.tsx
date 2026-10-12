@@ -130,7 +130,7 @@ function toLocalInput(d: Date) {
 }
 
 function DiscordBlock({ clip }: { clip: Clip }) {
-  const { settings, setPage } = useStore()
+  const { settings, goTo } = useStore()
   const toast = useToast()
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -156,7 +156,7 @@ function DiscordBlock({ clip }: { clip: Clip }) {
           <div className="font-semibold">Discord</div>
           <div className="text-xs text-ink-3 truncate">{ready ? (posts.length ? `Posted ${posts.length}× · last ${new Date(posts[posts.length - 1]).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : 'Plays inline in your channel') : 'Not set up'}</div>
         </div>
-        {!ready && <button className="btn-sm ml-auto" onClick={() => setPage('settings')}>Set up</button>}
+        {!ready && <button className="btn-sm ml-auto" onClick={() => goTo('settings', 'Discord')}>Set up</button>}
       </div>
       {ready && (
         <>

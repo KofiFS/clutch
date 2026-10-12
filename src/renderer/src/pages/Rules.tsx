@@ -15,7 +15,7 @@ const PRESETS = [
 ]
 
 export default function Rules() {
-  const { settings, save, status, setPage, account, signIn } = useStore()
+  const { settings, save, status, setPage, account, signIn, goTo } = useStore()
   if (!settings) return null
   const v = settings.vision
   const vo = settings.voice
@@ -57,7 +57,10 @@ export default function Rules() {
         right={<div className="flex items-center gap-3"><Badge tone="ok">No AI</Badge><Toggle size="lg" checked={vo.enabled} onChange={(enabled) => void setVoice({ enabled })} label={vo.enabled ? 'On' : 'Off'} /></div>}
       >
         <div className="grid grid-cols-2 gap-5">
-          <Toggle checked={vo.onMic} onChange={(onMic) => void setVoice({ onMic })} label="My microphone" hint={settings.capture.micDevice || 'Pick a mic under Settings → Audio'} />
+          <div>
+            <Toggle checked={vo.onMic} onChange={(onMic) => void setVoice({ onMic })} label="My microphone" hint={settings.capture.micDevice || 'No mic picked yet'} />
+            {!settings.capture.micDevice && <button className="btn-sm mt-2 ml-12" onClick={() => goTo('settings', 'Audio sources')}><Mic size={13} /> Pick a mic</button>}
+          </div>
           <Toggle checked={vo.onSystemAudio} onChange={(onSystemAudio) => void setVoice({ onSystemAudio })} label="Voice chat / game audio" hint="Uses system audio. Game sound counts too, so raise the threshold if gunfire triggers it." />
         </div>
         <div className="card-2 p-3 space-y-2">

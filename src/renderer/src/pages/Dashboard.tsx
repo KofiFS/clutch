@@ -7,9 +7,10 @@ import { LiveMeter } from '../components/AudioSources'
 import { useToast } from '../components/Toasts'
 import { SponsoredCard } from '../components/Account'
 import { PickGame } from '../components/PickGame'
+import { SetupCard } from '../components/SetupChecklist'
 
 export default function Dashboard() {
-  const { status, activity, settings, libraryVersion, start, clipNow, setPage, openClip, game, loopbackError } = useStore()
+  const { status, activity, settings, libraryVersion, start, clipNow, setPage, openClip, game, loopbackError, goTo } = useStore()
   const [recent, setRecent] = useState<Clip[]>([])
   const [stats, setStats] = useState<{ count: number; bytes: number; seconds: number } | null>(null)
   const [disk, setDisk] = useState<{ free: number; total: number } | null>(null)
@@ -120,7 +121,7 @@ export default function Dashboard() {
         <div className="space-y-2">
           {status.lastError && <Problem text={status.lastError} action={{ label: 'Try again', onClick: () => void start() }} />}
           {loopbackError && <Problem text={`System audio is not being captured: ${loopbackError}`} action={{ label: 'Audio settings', onClick: () => setPage('settings') }} />}
-          {problems.map((p) => <Problem key={p.id} text={`${p.label}: ${p.detail}`} action={p.fix ? { label: 'Fix', onClick: () => setPage(p.fix!) } : undefined} />)}
+          {problems.map((p) => <Problem key={p.id} text={`${p.label}: ${p.detail}`} action={p.fix ? { label: 'Fix', onClick: () => goTo(p.fix!, p.fixFind) } : undefined} />)}
         </div>
       )}
 
@@ -136,6 +137,8 @@ export default function Dashboard() {
           </button>
         ))}
       </div>
+
+      <SetupCard />
 
       <SponsoredCard placement="home" />
 
@@ -163,7 +166,7 @@ export default function Dashboard() {
                   finally { setPosting(false) }
                 }}>{posting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Share to Discord</button>
               ) : (
-                <button className="btn" onClick={() => setPage('settings')}><MessageSquare size={15} /> Connect Discord</button>
+                <button className="btn" onClick={() => goTo('settings', 'Discord')}><MessageSquare size={15} /> Connect Discord</button>
               )}
             </div>
           </div>

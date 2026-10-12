@@ -411,6 +411,8 @@ export interface HealthItem {
   ok: boolean | 'warn'
   detail: string
   fix?: 'settings' | 'rules' | 'uploads'
+  /** Title of the setting the Fix button scrolls to on that page. */
+  fixFind?: string
 }
 
 export interface AudioDevice {

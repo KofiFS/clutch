@@ -5,7 +5,7 @@ import { dayLabel, fileUrl, timeAgo, useStore } from '../lib/store'
 import { Empty, Field, Progress, Section, Toggle, Badge } from '../components/ui'
 
 export default function Uploads() {
-  const { settings, save, uploadsVersion, libraryVersion, setPage, openClip, account, signIn, setProOpen } = useStore()
+  const { settings, save, uploadsVersion, libraryVersion, setPage, openClip, account, signIn, setProOpen, goTo } = useStore()
   const [items, setItems] = useState<{ clip: Clip; upload: UploadRecord }[]>([])
   const [upNext, setUpNext] = useState<Clip | undefined>()
   const [newTime, setNewTime] = useState('18:00')
@@ -36,7 +36,7 @@ export default function Uploads() {
           <h1 className="text-2xl font-semibold tracking-tight">Uploads</h1>
           <p className="text-ink-3 text-sm mt-1">{yt.connected ? <>Connected to YouTube as <span className="text-ink">{yt.channelTitle}</span>.</> : 'Connect YouTube to upload clips straight from the app.'}</p>
         </div>
-        {!yt.connected && <button className="btn-primary" onClick={() => setPage('settings')}><Youtube size={16} /> Connect YouTube</button>}
+        {!yt.connected && <button className="btn-primary" onClick={() => goTo('settings', 'Accounts')}><Youtube size={16} /> Connect YouTube</button>}
       </header>
 
       <Section
