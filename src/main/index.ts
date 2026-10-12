@@ -15,6 +15,7 @@ import { forSmartRead, hasObs, proposeChanges, readObs, readScreenshots } from '
 import { applyChanges } from './importer/parse'
 import { fromModel, smartReadLocal } from './importer/smart'
 import { MiniWidget } from './miniWidget'
+import { Updater } from './updater'
 import { OverlayToast } from './overlay'
 import { Recorder } from './recorder'
 import { SettingsStore } from './settings'
@@ -37,6 +38,7 @@ let scheduler: UploadScheduler
 let tray: AppTray | null = null
 let overlay: OverlayToast | null = null
 let mini: MiniWidget | null = null
+const updater = new Updater()
 let miniHideTimer: NodeJS.Timeout | null = null
 let registeredHotkey = ''
 const registeredKeys = new Set<string>()
@@ -379,6 +381,8 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('system:testOverlay', () => overlay?.show('Clipped!', 'This is how it looks in game', 'clip'))
   ipcMain.handle('system:canAcrylic', () => canAcrylic)
+  ipcMain.handle('update:state', () => updater.state)
+  ipcMain.handle('update:install', () => updater.install())
   ipcMain.handle('system:diskFree', async (_e, dir: string) => {
     const { freeBytes } = await import('./library/janitor')
     return freeBytes(dir || settings.get().capture.outputDir)
@@ -529,14 +533,34 @@ app.whenReady().then(async () => {
     return best.clip
   })
 
-  ipcMain.handle('youtube:connect', async () => {
-    const r = await scheduler.youtube().connect()
-    settings.set({ upload: { ...settings.get().upload, youtube: { ...settings.get().upload.youtube, connected: true, channelTitle: r.channelTitle } } })
-    return r
+  scheduler.youtubeAccountToken = async () => (await account.api<{ accessToken: string }>('POST', '/api/youtube/token')).accessToken
+  const setYouTube = (patch: Partial<Settings['upload']['youtube']>) => settings.set({ upload: { ...settings.get().upload, youtube: { ...settings.get().upload.youtube, ...patch } } })
+  /** One click: sign in with Google through the Clutch account. `own` uses the user's own Google app. */
+  ipcMain.handle('youtube:connect', async (_e, mode: 'account' | 'own' = 'account') => {
+    if (mode === 'own') {
+      const r = await scheduler.youtube().connect()
+      setYouTube({ connected: true, channelTitle: r.channelTitle, via: 'own' })
+      return r
+    }
+    if (!account.state.signedIn) throw new Error('SIGN_IN')
+    const { url } = await account.api<{ url: string }>('POST', '/api/youtube/connect')
+    void shell.openExternal(url)
+    // Wait for the browser consent to finish on the server (up to 5 minutes).
+    for (let i = 0; i < 150; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const st = await account.api<{ connected: boolean; channel: string | null }>('GET', '/api/youtube').catch(() => null)
+      if (st?.connected) {
+        setYouTube({ connected: true, channelTitle: st.channel ?? 'YouTube', via: 'account' })
+        showWindow()
+        return { channelTitle: st.channel ?? 'YouTube' }
+      }
+    }
+    throw new Error('Timed out waiting for Google. Try again.')
   })
-  ipcMain.handle('youtube:disconnect', () => {
-    scheduler.youtube().disconnect()
-    settings.set({ upload: { ...settings.get().upload, youtube: { ...settings.get().upload.youtube, connected: false, channelTitle: undefined } } })
+  ipcMain.handle('youtube:disconnect', async () => {
+    if (settings.get().upload.youtube.via === 'account') await account.api('POST', '/api/youtube/disconnect').catch(() => undefined)
+    else scheduler.youtube().disconnect()
+    setYouTube({ connected: false, channelTitle: undefined, via: undefined })
   })
   ipcMain.handle('upload:enqueue', (_e, clipId: string, platform: Platform, opts: (Omit<EnqueueOptions, 'scheduledAt'> & { scheduledAt?: string }) = {}) =>
     scheduler.enqueue(clipId, platform, { ...opts, scheduledAt: opts.scheduledAt ? new Date(opts.scheduledAt) : undefined }))
@@ -559,6 +583,8 @@ app.whenReady().then(async () => {
     setLaunchAtLogin: (on) => { settings.set({ app: { ...settings.get().app, launchAtLogin: on } }) },
     startStop: () => void (recorder.status.running || recorder.isPaused ? recorder.stop('manual') : recorder.start('manual').then((ok) => { if (ok) shrinkToWidget() })),
     isPaused: () => recorder.isPaused,
+    updateReady: () => updater.state.ready ?? null,
+    installUpdate: () => updater.install(),
     missedGame: () => {
       const a = recorder.lastApp
       return a && !a.isGame ? { name: a.name, process: a.process } : null
@@ -575,6 +601,8 @@ app.whenReady().then(async () => {
   createWindow()
   registerHotkey(settings.get())
   scheduler.start()
+  updater.on('change', (st) => { send('update', st); tray?.refresh() })
+  updater.start()
   recorder.library.reconcile()
   if (settings.get().startBufferOnLaunch) void recorder.start('manual')
 })

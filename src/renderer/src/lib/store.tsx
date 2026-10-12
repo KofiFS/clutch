@@ -54,6 +54,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const closeSignIn = useCallback(() => setSignInReason(null), [])
   const [loopbackError, setLoopbackError] = useState<string | null>(null)
   const toast = useToast()
+  // Updates download in the background; offer a restart once (never restart on our own).
+  useEffect(() => {
+    let shown = ''
+    const off = window.cf.on('update', (st: { ready?: string }) => {
+      if (!st.ready || st.ready === shown) return
+      shown = st.ready
+      toast.push({ kind: 'info', title: `Clutch ${st.ready} is ready`, body: 'It installs the next time Clutch restarts.', action: { label: 'Restart now', onClick: () => void window.cf.updates.install() }, ms: 15000 })
+    })
+    return () => { off() }
+  }, [toast])
   const settingsRef = useRef<Settings | null>(null)
   settingsRef.current = settings
 

@@ -102,6 +102,8 @@ export interface UploadSettings {
     clientId: string
     clientSecret: string
     connected: boolean
+    /** 'account': through the Clutch server (one click). 'own': the user's own Google OAuth app. */
+    via?: 'account' | 'own'
     channelTitle?: string
     privacy: 'private' | 'unlisted' | 'public'
     titleTemplate: string

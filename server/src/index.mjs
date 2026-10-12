@@ -14,6 +14,7 @@ import { devLoginPage, messagePage, sharePage } from './pages.mjs'
 import { users as usersDb } from './db.mjs'
 import { countSmartRead, smartRead, smartReadEnabled, smartReadsLeft } from './importer.mjs'
 import { countVisionCheck, judgeFrames, visionChecksLeft, visionEnabled } from './vision.mjs'
+import { youtubeAccessToken, youtubeConnectUrl, youtubeDisconnect, youtubeEnabled, youtubeFinish, youtubeStatus } from './youtube.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const adsFile = path.resolve(here, '..', 'ads.json')
@@ -214,6 +215,33 @@ async function route(req, res) {
       console.error('[smart-read]', e?.message ?? e)
       throw new HttpError(502, 'The smart read failed. Try again in a minute.')
     }
+  }
+
+  // --- YouTube through the Clutch account (no Google Cloud project per user) ---
+  if (req.method === 'GET' && p === '/api/youtube') return send(res, 200, youtubeStatus(authed(req).id))
+  if (req.method === 'POST' && p === '/api/youtube/connect') {
+    const user = authed(req)
+    if (!youtubeEnabled()) throw new HttpError(503, 'YouTube is not set up on this server yet.')
+    return send(res, 200, { url: youtubeConnectUrl(user.id) })
+  }
+  if (req.method === 'GET' && p === '/auth/youtube/callback') {
+    const code = url.searchParams.get('code')
+    if (!code) return send(res, 400, messagePage('YouTube not connected', url.searchParams.get('error') === 'access_denied' ? 'You cancelled. You can try again from Clutch.' : 'Google did not send a code back.'))
+    try {
+      const r = await youtubeFinish(code, url.searchParams.get('state') ?? '')
+      return send(res, 200, messagePage('YouTube connected', `${r.channel ? `Clutch can now upload to ${r.channel}.` : 'Clutch can now upload to your channel.'} You can close this tab.`))
+    } catch (e) {
+      return send(res, 400, messagePage('YouTube not connected', e instanceof Error ? e.message : String(e)))
+    }
+  }
+  if (req.method === 'POST' && p === '/api/youtube/token') {
+    const t = await youtubeAccessToken(authed(req).id).catch((e) => { throw new HttpError(409, `Reconnect YouTube: ${e.message}`) })
+    if (!t) throw new HttpError(404, 'YouTube is not connected')
+    return send(res, 200, t, { 'Cache-Control': 'no-store' })
+  }
+  if (req.method === 'POST' && p === '/api/youtube/disconnect') {
+    await youtubeDisconnect(authed(req).id)
+    return send(res, 200, { ok: true })
   }
 
   // --- screen watching for accounts without their own AI key (the app gates and rate-limits first) ---

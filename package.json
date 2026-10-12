@@ -12,12 +12,14 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "dist": "electron-vite build && electron-builder --win"
+    "dist": "electron-vite build && node scripts/dist.mjs",
+    "release": "electron-vite build && node scripts/dist.mjs --publish"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@fontsource/orbitron": "^5.3.0",
+    "electron-updater": "^6.8.9",
     "googleapis": "^160.0.0",
     "zod": "^3.25.0"
   },
@@ -91,7 +93,12 @@
       "deleteAppDataOnUninstall": false,
       "include": "build/installer.nsh"
     },
-    "publish": null
+    "publish": {
+      "provider": "github",
+      "owner": "KofiFS",
+      "repo": "clutch",
+      "releaseType": "release"
+    }
   },
   "productName": "Clutch",
   "license": "GPL-3.0-or-later",

@@ -10,6 +10,8 @@ export interface TrayActions {
   quit: () => void
   isRunning: () => boolean
   isPaused: () => boolean
+  updateReady: () => string | null
+  installUpdate: () => void
   /** The last app used, if it isn't seen as a game, for "Treat X as a game". */
   missedGame: () => { name: string; process: string } | null
   treatAsGame: (process: string) => void
@@ -86,6 +88,7 @@ export class AppTray {
         { label: 'Settings', click: () => this.actions.show('settings') },
         { type: 'separator' },
         { label: login.available ? 'Start with Windows' : 'Start with Windows (installed app only)', type: 'checkbox', checked: login.enabled, enabled: login.available, click: (item) => this.actions.setLaunchAtLogin(item.checked) },
+        ...(this.actions.updateReady() ? [{ label: `Restart to update (v${this.actions.updateReady()})`, click: () => this.actions.installUpdate() }] : []),
         { label: 'Quit Clutch', click: () => this.actions.quit() }
       ])
     )

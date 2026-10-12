@@ -4,6 +4,7 @@ import type { Clip, TriggerSource } from '../../../shared/types'
 import { dayLabel, fileUrl, fmtDuration, timeAgo, useStore } from '../lib/store'
 import type { GameSummary } from '../../../shared/types'
 import { Empty, GameIcon, Kbd, useConfirm } from '../components/ui'
+import { CopyLinkButton } from '../components/CopyLinkButton'
 import { useToast } from '../components/Toasts'
 import { SponsoredCard } from '../components/Account'
 
@@ -188,6 +189,7 @@ export default function Library() {
                         <div className="text-[13px] font-medium truncate" title={c.title}>{c.title}</div>
                         <div className="text-xs text-ink-3 truncate">{c.game} · {timeAgo(c.createdAt)}{c.event ? ` · ${c.event}` : ''}</div>
                       </div>
+                      {view === 'clips' && <CopyLinkButton clip={c} />}
                       {view === 'clips' && (
                         <button onClick={() => void window.cf.library.update(c.id, { favorite: !c.favorite })} className={`w-7 h-7 -mr-1 -mt-1 rounded-md grid place-items-center hover:bg-surface-3 ${c.favorite ? 'text-bad' : 'text-ink-3 hover:text-bad'}`} aria-label={c.favorite ? 'Unfavorite' : 'Favorite'}>
                           <Heart size={15} className={c.favorite ? 'fill-bad' : ''} />

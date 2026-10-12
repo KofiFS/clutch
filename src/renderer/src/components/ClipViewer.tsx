@@ -5,6 +5,7 @@ import { fileUrl, fmtBytes, fmtTime, useStore } from '../lib/store'
 import { GameIcon, InlineEdit, Kbd, useConfirm } from './ui'
 import { useToast } from './Toasts'
 import { SharePanel } from './SharePanel'
+import { CopyLinkButton } from './CopyLinkButton'
 
 /**
  * Full clip viewer: player, trim timeline with draggable in/out handles, metadata, share panel,
@@ -185,6 +186,8 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
             <InlineEdit value={clip.title} onSave={(title) => void window.cf.library.update(clip.id, { title })} className="font-semibold text-[15px] truncate max-w-[520px]" />
             <span className="text-xs text-ink-3 truncate">{clip.game}</span>
             <div className="ml-auto flex items-center gap-1">
+              <CopyLinkButton clip={clip} variant="button" />
+              <span className="w-2" />
               <button className="btn-ghost h-9 w-9 px-0" disabled={!neighbors.prev} onClick={() => neighbors.prev && openClip(neighbors.prev)} title="Previous clip ["><ChevronLeft size={18} /></button>
               <button className="btn-ghost h-9 w-9 px-0" disabled={!neighbors.next} onClick={() => neighbors.next && openClip(neighbors.next)} title="Next clip ]"><ChevronRight size={18} /></button>
               {!fullscreen && <button className="btn-ghost h-9 w-9 px-0" onClick={() => setWide(!wide)} aria-label={wide ? 'Show details panel' : 'Hide details panel'} title={`${wide ? 'Show' : 'Hide'} details (T)`}>{wide ? <PanelRightOpen size={18} /> : <PanelRightClose size={18} />}</button>}

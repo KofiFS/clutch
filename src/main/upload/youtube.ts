@@ -21,7 +21,11 @@ export interface YouTubeUploadInput {
 export class YouTubeUploader {
   private tokenFile: string
 
-  constructor(dataDir: string, private clientId: string, private clientSecret: string) {
+  /**
+   * `accountToken`: one-click mode. The Clutch server holds the Google app and hands out a
+   * short-lived access token; the video still goes straight from this PC to YouTube.
+   */
+  constructor(dataDir: string, private clientId: string, private clientSecret: string, private accountToken?: () => Promise<string>) {
     this.tokenFile = path.join(dataDir, 'youtube-token.json')
   }
 
@@ -30,7 +34,7 @@ export class YouTubeUploader {
   }
 
   get connected() {
-    return fs.existsSync(this.tokenFile)
+    return !!this.accountToken || fs.existsSync(this.tokenFile)
   }
 
   disconnect() {
@@ -91,8 +95,14 @@ export class YouTubeUploader {
 
   async upload(input: YouTubeUploadInput): Promise<{ url: string; videoId: string }> {
     if (!this.connected) throw new Error('YouTube is not connected')
-    const client = this.makeClient()
-    client.setCredentials(this.loadTokens())
+    let client
+    if (this.accountToken) {
+      client = new google.auth.OAuth2()
+      client.setCredentials({ access_token: await this.accountToken() })
+    } else {
+      client = this.makeClient()
+      client.setCredentials(this.loadTokens())
+    }
     const yt = google.youtube({ version: 'v3', auth: client })
     const size = fs.statSync(input.file).size
     const res = await yt.videos.insert(

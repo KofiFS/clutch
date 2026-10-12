@@ -41,9 +41,13 @@ export class UploadScheduler extends EventEmitter<{ log: [string]; change: []; d
     this.timer = null
   }
 
+  /** Set by the main process: access tokens from the Clutch account (one-click YouTube). */
+  youtubeAccountToken: (() => Promise<string>) | null = null
+
   youtube(): YouTubeUploader {
     const y = this.getSettings().upload.youtube
-    return new YouTubeUploader(this.dataDir, y.clientId, y.clientSecret)
+    const viaAccount = y.via === 'account' && this.youtubeAccountToken
+    return new YouTubeUploader(this.dataDir, y.clientId, y.clientSecret, viaAccount ? this.youtubeAccountToken! : undefined)
   }
 
   /** Fill the title/description templates for a clip. */

@@ -23,7 +23,7 @@ const ENCODER_LABEL: Record<Encoder, string> = {
 }
 
 export default function Settings() {
-  const { settings, save, status, setPage } = useStore()
+  const { settings, save, status, setPage, signIn } = useStore()
   const toast = useToast()
   const [devices, setDevices] = useState<string[]>([])
   const [encoders, setEncoders] = useState<{ available: string[]; best: string } | null>(null)
@@ -49,13 +49,17 @@ export default function Settings() {
   const ytCfg = yt ?? { clientId: settings.upload.youtube.clientId, clientSecret: settings.upload.youtube.clientSecret }
   const preset = QUALITY_PRESETS.find((p) => Object.entries(p.capture).every(([k, v]) => (c as unknown as Record<string, unknown>)[k] === v))?.id
 
-  const connectYouTube = async () => {
+  const connectYouTube = async (mode: 'account' | 'own') => {
     setBusy('yt'); setErr('')
     try {
-      await save({ upload: { ...settings.upload, youtube: { ...settings.upload.youtube, ...ytCfg } } })
-      const r = await window.cf.youtube.connect()
+      if (mode === 'own') await save({ upload: { ...settings.upload, youtube: { ...settings.upload.youtube, ...ytCfg } } })
+      const r = await window.cf.youtube.connect(mode)
       toast.push({ kind: 'success', title: 'YouTube connected', body: r.channelTitle })
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)) } finally { setBusy('') }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)
+      if (msg === 'SIGN_IN') signIn('Sign in to connect YouTube in one click.')
+      else setErr(msg)
+    } finally { setBusy('') }
   }
 
   return (
@@ -181,7 +185,7 @@ export default function Settings() {
         <Toggle checked={settings.ai.autoTitle} onChange={(autoTitle) => void save({ ai: { ...settings.ai, autoTitle } })} label="Name new clips automatically" hint="One small request per clip using its thumbnail, e.g. “Triple kill on B site”. Never overwrites a name you typed." />
       </Section>
 
-      <Section title="Accounts" icon={<Youtube size={16} />} desc="Uploads use your own Google OAuth app, so your channel talks straight to YouTube.">
+      <Section title="Accounts" icon={<Youtube size={16} />} desc="Videos upload straight from your PC to YouTube.">
         {settings.upload.youtube.connected ? (
           <div className="flex items-center justify-between card-2 p-3">
             <div className="flex items-center gap-3 text-sm"><span className="w-9 h-9 rounded-lg bg-[#ff0000]/15 text-[#ff4d4d] grid place-items-center"><Youtube size={18} /></span><div><div className="font-semibold">{settings.upload.youtube.channelTitle}</div><div className="text-xs text-ink-3">Connected</div></div></div>
@@ -189,6 +193,14 @@ export default function Settings() {
           </div>
         ) : (
           <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <button className="btn-primary" disabled={busy === 'yt'} onClick={() => void connectYouTube('account')}><Youtube size={16} /> {busy === 'yt' ? 'Waiting for Google…' : 'Connect YouTube'}</button>
+              <span className="text-xs text-ink-3">Sign in with Google in your browser. Needs a Clutch account.</span>
+              {err && <span className="text-sm text-bad">{err}</span>}
+            </div>
+            <details className="group">
+              <summary className="text-xs text-ink-3 hover:text-ink-2 cursor-pointer select-none">Advanced: use your own Google app instead</summary>
+              <div className="space-y-3 mt-3">
             <ol className="text-xs text-ink-2 list-decimal pl-4 space-y-1 leading-relaxed">
               <li>Go to <button className="text-live hover:underline" onClick={() => void window.cf.system.openExternal('https://console.cloud.google.com/apis/library/youtube.googleapis.com')}>console.cloud.google.com</button> → create a project → enable “YouTube Data API v3”.</li>
               <li>APIs & Services → Credentials → Create OAuth client ID → type <b>Desktop app</b>.</li>
@@ -198,10 +210,9 @@ export default function Settings() {
               <input className="input" placeholder="Client ID" value={ytCfg.clientId} onChange={(e) => setYt({ ...ytCfg, clientId: e.target.value })} />
               <input className="input" type="password" placeholder="Client secret" value={ytCfg.clientSecret} onChange={(e) => setYt({ ...ytCfg, clientSecret: e.target.value })} />
             </div>
-            <div className="flex items-center gap-3">
-              <button className="btn-primary" disabled={busy === 'yt' || !ytCfg.clientId || !ytCfg.clientSecret} onClick={() => void connectYouTube()}><Youtube size={16} /> {busy === 'yt' ? 'Waiting for Google…' : 'Connect YouTube'}</button>
-              {err && <span className="text-sm text-bad">{err}</span>}
-            </div>
+            <button className="btn" disabled={busy === 'yt' || !ytCfg.clientId || !ytCfg.clientSecret} onClick={() => void connectYouTube('own')}><Youtube size={16} /> Connect with my own app</button>
+              </div>
+            </details>
           </div>
         )}
         <div className="grid grid-cols-3 gap-5 pt-2">

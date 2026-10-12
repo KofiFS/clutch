@@ -19,7 +19,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update'
 
 const api = {
   settings: {
@@ -78,6 +78,10 @@ const api = {
     bookmark: (): Promise<void> => ipcRenderer.invoke('bookmark:add'),
     togglePause: (): Promise<unknown> => ipcRenderer.invoke('buffer:togglePause')
   },
+  updates: {
+    state: (): Promise<{ ready?: string; checking?: boolean; error?: string }> => ipcRenderer.invoke('update:state'),
+    install: (): Promise<void> => ipcRenderer.invoke('update:install')
+  },
   /** Bring settings over from another recorder. */
   importer: {
     hasObs: (): Promise<boolean> => ipcRenderer.invoke('import:hasObs'),
@@ -121,7 +125,7 @@ const api = {
     postToday: (): Promise<Clip> => ipcRenderer.invoke('discord:postToday')
   },
   youtube: {
-    connect: (): Promise<{ channelTitle: string }> => ipcRenderer.invoke('youtube:connect'),
+    connect: (mode: 'account' | 'own' = 'account'): Promise<{ channelTitle: string }> => ipcRenderer.invoke('youtube:connect', mode),
     disconnect: (): Promise<void> => ipcRenderer.invoke('youtube:disconnect')
   },
   upload: {
