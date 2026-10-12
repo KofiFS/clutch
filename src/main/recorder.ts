@@ -60,6 +60,8 @@ export class Recorder extends EventEmitter<RecorderEvents> {
    * recording carries on and clips stay filed under the game, like Medal.
    */
   private stickyGame: { info: GameInfo; pid: number } | null = null
+  /** Last app in front other than the desktop or Clutch. */
+  lastApp: GameInfo | null = null
 
   constructor(private settings: SettingsStore, dataDir: string) {
     super()
@@ -111,7 +113,11 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
     let lastVision = { enabled: settings.get().vision.enabled && this.vision.ready, interval: settings.get().vision.intervalSeconds }
     let lastAudio = JSON.stringify(settings.get().capture.audioSources)
+    let lastLists = JSON.stringify([settings.get().extraGames, settings.get().allowlist, settings.get().blocklist])
     settings.onChange((s) => {
+      // The game lists changed: forget the remembered game so the new lists apply right away.
+      const lists = JSON.stringify([s.extraGames, s.allowlist, s.blocklist])
+      if (lists !== lastLists) { lastLists = lists; this.stickyGame = null }
       const audio = JSON.stringify(s.capture.audioSources)
       if (audio !== lastAudio) {
         lastAudio = audio
@@ -325,14 +331,17 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   private async pollGame() {
     const s = this.settings.get()
     const fg = await getForegroundApp(this.stickyGame?.pid ?? 0)
-    let info = await toGameInfo(fg, s.allowlist)
+    let info = await toGameInfo(fg, s.allowlist, s.extraGames ?? [])
+    // Remember the last real app (not the taskbar or Clutch), so the tray can offer "treat it as a game".
+    if (info.process && info.name !== 'Desktop' && !/^(electron|clutch)$/i.test(info.process)) this.lastApp = info
     if (info.isGame && fg.pid) this.stickyGame = { info, pid: fg.pid }
     else if (this.stickyGame) {
       // Another (non-game) window has focus: stay on the game while it is still running.
       if (fg.watchedAlive) info = this.stickyGame.info
       else this.stickyGame = null
     }
-    const changed = info.process !== this.game.process
+    // Also when the same app becomes (or stops being) a game, e.g. after "Treat as a game".
+    const changed = info.process !== this.game.process || !!info.isGame !== !!this.game.isGame
     if (changed) {
       this.game = info
       this.vision.reset()
@@ -377,6 +386,17 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   }
 
   /** Hotkey / manual: clip the last `preSeconds` plus the next `postSeconds`. */
+  /** "This is a game": add an app Clutch missed, then re-check right away so recording can start. */
+  treatAsGame(process: string) {
+    const s = this.settings.get()
+    const p = process.toLowerCase().replace(/\.exe$/, '')
+    if (!p || (s.extraGames ?? []).includes(p)) return
+    this.settings.set({ extraGames: [...(s.extraGames ?? []), p] })
+    if (this.lastApp?.process === p) this.lastApp = { ...this.lastApp, isGame: true }
+    this.log('game', `${this.lastApp?.process === p ? this.lastApp.name : p} will be treated as a game`)
+    void this.pollGame()
+  }
+
   async clipNow(trigger: TriggerSource = 'hotkey', seconds?: number) {
     const c = this.effectiveCapture()
     const back = Math.min(seconds ?? c.preSeconds, c.bufferSeconds)

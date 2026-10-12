@@ -10,6 +10,9 @@ export interface TrayActions {
   quit: () => void
   isRunning: () => boolean
   isPaused: () => boolean
+  /** The last app used, if it isn't seen as a game, for "Treat X as a game". */
+  missedGame: () => { name: string; process: string } | null
+  treatAsGame: (process: string) => void
   togglePause: () => void
   lengths: () => { options: number[]; current: number }
   setLength: (seconds: number) => void
@@ -50,6 +53,7 @@ export class AppTray {
     const game = status?.game ?? this.last?.game
     const long = this.actions.isLong()
     const paused = this.actions.isPaused()
+    const missed = this.actions.missedGame()
     const { options, current } = this.actions.lengths()
     const keys = this.actions.hotkeys()
     const login = this.actions.launchAtLogin()
@@ -69,6 +73,7 @@ export class AppTray {
         { label: paused ? 'Resume recording' : 'Pause recording', enabled: running || paused, click: () => this.actions.togglePause() },
         { label: 'Clip now', enabled: running || paused, accelerator: accel(keys.clip), registerAccelerator: false, click: () => this.actions.clipNow() },
         { label: long ? 'Stop long recording' : 'Start long recording', accelerator: accel(keys.long), registerAccelerator: false, click: () => this.actions.toggleLong() },
+        ...(missed ? [{ label: `Treat ${missed.name.length > 28 ? missed.name.slice(0, 27) + '…' : missed.name} as a game`, click: () => this.actions.treatAsGame(missed.process) }] : []),
         { label: 'Bookmark this moment', enabled: long, accelerator: accel(keys.bookmark), registerAccelerator: false, click: () => this.actions.bookmark() },
         {
           label: `Clip length (${current}s)`,

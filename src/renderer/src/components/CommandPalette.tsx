@@ -30,6 +30,7 @@ const SETTINGS: { label: string; page: Page; find: string; keywords?: string }[]
   { label: 'Appearance', page: 'settings', find: 'Appearance', keywords: 'theme glass lite effects transparent acrylic look' },
   { label: 'On-screen “Clipped!” popup', page: 'settings', find: 'On-screen “Clipped!” popup', keywords: 'overlay toast notification in game' },
   { label: 'Import settings from Medal, OBS or NVIDIA', page: 'settings', find: 'Bring your settings', keywords: 'import medal obs nvidia shadowplay screenshot copy migrate switch transfer' },
+  { label: 'Treat an app as a game', page: 'rules', find: 'Treat as a game', keywords: 'game not detected missing windowed add game force detect record app' },
   { label: 'Mini controller while recording', page: 'settings', find: 'Shrink to a mini controller while recording', keywords: 'widget overlay corner pause resume stop small floating hud' },
   { label: 'Start with Windows', page: 'settings', find: 'Start with Windows', keywords: 'startup login boot tray' },
   { label: 'Discord', page: 'settings', find: 'Discord', keywords: 'webhook channel post share server' },

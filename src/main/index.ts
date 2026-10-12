@@ -286,7 +286,7 @@ app.whenReady().then(async () => {
     mini?.send('clip-saved', clip)
     if (settings.get().app.overlayToasts) overlay?.show('Clipped!', `${clip.game} · ${Math.round(clip.durationSec)}s`, 'clip')
   })
-  recorder.on('game', (g) => send('game', g))
+  recorder.on('game', (g) => { send('game', g); tray?.refresh() })
   recorder.on('notice', (n) => overlay?.show(n.title, n.sub, n.kind, 2200))
   recorder.library.on('change', () => send('library-changed', null))
   scheduler.on('change', () => send('uploads-changed', null))
@@ -540,6 +540,11 @@ app.whenReady().then(async () => {
     setLaunchAtLogin: (on) => { settings.set({ app: { ...settings.get().app, launchAtLogin: on } }) },
     startStop: () => void (recorder.status.running || recorder.isPaused ? recorder.stop('manual') : recorder.start('manual').then((ok) => { if (ok) shrinkToWidget() })),
     isPaused: () => recorder.isPaused,
+    missedGame: () => {
+      const a = recorder.lastApp
+      return a && !a.isGame ? { name: a.name, process: a.process } : null
+    },
+    treatAsGame: (p) => recorder.treatAsGame(p),
     togglePause: () => void recorder.togglePause(),
     clipNow: () => void recorder.clipNow('manual'),
     lengths: () => ({ options: recorder.lengthOptions(), current: recorder.effectiveCapture().preSeconds }),

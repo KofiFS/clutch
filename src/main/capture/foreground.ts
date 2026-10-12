@@ -154,10 +154,13 @@ export function isSystemProcess(process: string) {
 }
 
 /** Our best guess at whether the foreground app is a game: install location, fullscreen, or user-listed. */
-export function looksLikeGame(fg: ForegroundApp, allowlist: string[] = []): boolean {
+export function looksLikeGame(fg: ForegroundApp, allowlist: string[] = [], extraGames: string[] = []): boolean {
   const proc = fg.process.toLowerCase()
-  if (isSystemProcess(proc) || NOT_GAMES.test(proc)) return false
-  if (allowlist.some((a) => a.toLowerCase().replace(/\.exe$/, '') === proc)) return true
+  if (isSystemProcess(proc)) return false
+  const listed = (list: string[]) => list.some((a) => a.toLowerCase().replace(/\.exe$/, '') === proc)
+  // The user's own choice wins over the built-in "not a game" list.
+  if (listed(extraGames) || listed(allowlist)) return true
+  if (NOT_GAMES.test(proc)) return false
   if (GAME_PATH_HINTS.test(fg.exePath)) return true
   return fg.fullscreen
 }
@@ -178,7 +181,7 @@ export function gameNameFrom(fg: Pick<ForegroundApp, 'process' | 'title'>): stri
   return t.length > 1 && t.length < 48 ? t : fg.process
 }
 
-export async function toGameInfo(fg: ForegroundApp, allowlist: string[]): Promise<GameInfo> {
+export async function toGameInfo(fg: ForegroundApp, allowlist: string[], extraGames: string[] = []): Promise<GameInfo> {
   return {
     name: gameNameFrom(fg),
     process: fg.process.toLowerCase(),
@@ -186,7 +189,7 @@ export async function toGameInfo(fg: ForegroundApp, allowlist: string[]): Promis
     // No icon for the desktop / Clutch itself: the UI shows a monitor glyph instead of e.g. the Electron logo.
     icon: fg.exePath && !isSystemProcess(fg.process) ? await cachedIcon(fg.process, fg.exePath) : undefined,
     fullscreen: fg.fullscreen,
-    isGame: looksLikeGame(fg, allowlist)
+    isGame: looksLikeGame(fg, allowlist, extraGames)
   }
 }
 

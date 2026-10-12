@@ -248,6 +248,8 @@ export interface Settings {
   app: AppBehavior
   /** Games (process names) never recorded, e.g. ["discord.exe"]. */
   blocklist: string[]
+  /** Apps Clutch should treat as games although it doesn't detect them (process names). Limits nothing else. */
+  extraGames: string[]
   /** If non-empty, only record when one of these processes is in the foreground. */
   allowlist: string[]
   /** Per-game capture overrides. */
@@ -444,6 +446,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   cloud: { serverUrl: OFFICIAL_CLOUD_URL, backupFavorites: true },
   blocklist: [],
+  extraGames: [],
   allowlist: [],
   profiles: {},
   startBufferOnLaunch: false

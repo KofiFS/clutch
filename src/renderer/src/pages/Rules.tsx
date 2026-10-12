@@ -98,6 +98,9 @@ export default function Rules() {
       </Section>
 
       <Section title="Which games" icon={<Gamepad2 size={16} />} desc="Pick from what's running now or games you've already clipped. The hotkey always works.">
+        <Field label="Treat as a game" hint="For games Clutch doesn't spot by itself, e.g. one running in a window. It records them like any other game and limits nothing else. Tip: right-click the tray icon right after playing for “Treat … as a game”.">
+          <GamePicker value={settings.extraGames ?? []} onChange={(extraGames) => void save({ extraGames })} placeholder="Clutch finds your games by itself" />
+        </Field>
         <div className="grid grid-cols-2 gap-5">
           <Field label="Never auto-clip in" hint="Discord, browsers, work apps…">
             <GamePicker value={settings.blocklist} onChange={(blocklist) => void save({ blocklist })} placeholder="No games blocked" />
