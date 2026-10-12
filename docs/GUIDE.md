@@ -56,8 +56,10 @@ so it never shows up in clips.
 - **Settings → Recording area:** Full screen, Game window (crops to the game in front when recording starts),
   A window, or Custom area (drag on screen, or use presets such as "16:9 centered" for ultrawide monitors).
 - **Settings → Audio sources:** add mics or virtual cables, set each volume, and turn on "Separate track"
-  to keep a source on its own track. Track 1 is always the mix. To put Discord on its own track, send
-  Discord's output to a virtual cable (VB-Cable, Voicemeeter) and add that cable here.
+  to keep a source on its own track. Track 1 is always the mix. **Add Discord** (or **Add an app's
+  audio**) records just that app on its own track, using Windows' per-app capture (Windows 10 2004+),
+  with no virtual cable. It isn't added to the mix by default, since game & voice chat audio already
+  contains it.
 
 ## Keyboard shortcuts
 

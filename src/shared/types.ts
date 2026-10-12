@@ -10,9 +10,13 @@ export type CaptureArea =
 /** One audio input. Every enabled source is mixed into track 1; `ownTrack` also keeps it on its own track. */
 export interface AudioSource {
   id: string
-  kind: 'mic' | 'desktop'
+  kind: 'mic' | 'desktop' | 'app'
   /** DirectShow device name (mics, virtual cables, capture cards). */
   device?: string
+  /** For 'app': the program to capture, e.g. "discord" (its child processes are included). */
+  process?: string
+  /** For 'app': also add it to the main mix. Off by default, since game & voice chat audio already contains it. */
+  inMix?: boolean
   name: string
   enabled: boolean
   /** 1 = 100 %. 0 .. 2. */

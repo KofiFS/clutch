@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { CaptureSettings, Encoder } from '../../shared/types'
 import { detectEncoders, ffmpegPath, ffprobePath, lowerPriority, run } from './ffmpeg'
+import { AppAudioSource } from './appAudio'
 
 const SEG_SECONDS = 2
 const SYS_RATE = 48000
@@ -46,6 +47,9 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
   private sysBytesWritten = 0
   private sysStartedAt = 0
   private sysQueue: Buffer[] = []
+  /** Per-app audio (e.g. Discord on its own track), served to FFmpeg over named pipes. */
+  private appSources = new Map<string, AppAudioSource>()
+  private appLevelTimer: NodeJS.Timeout | null = null
   private pendingSaves = 0
   private snapshotBuf: Buffer = Buffer.alloc(0)
   private micDb = -100
@@ -104,12 +108,28 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       else fitScale = Math.min(4096 / w, 4096 / h)
     }
     this.resolution = `${Math.round(w * fitScale)}x${Math.round(h * fitScale)}`
+    // App audio pipes must be listening before FFmpeg opens them as inputs.
+    for (const a of this.appSources.values()) a.stop()
+    this.appSources.clear()
+    for (const src of (settings.audioSources ?? []).filter((x) => x.enabled && x.kind === 'app' && x.process)) {
+      const a = new AppAudioSource(src.id, src.process!)
+      a.onLog = (m) => this.emit('log', m)
+      try { await a.listen(); this.appSources.set(src.id, a) } catch (e) { this.emit('log', `App audio for ${src.name} is unavailable: ${e instanceof Error ? e.message : String(e)}`) }
+    }
     const args = this.buildArgs(settings, this.encoder, settings.resolutionScale * fitScale)
     console.log('[ffmpeg]', args.join(' '))
 
     const proc = spawn(ffmpegPath(), args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
     this.proc = proc
     this.running = true
+    for (const a of this.appSources.values()) a.start()
+    if (this.appSources.size) {
+      // App levels for the meters (mic levels come from FFmpeg itself).
+      this.appLevelTimer = setInterval(() => {
+        for (const [id, a] of this.appSources) this.sourceLevels[id] = a.levelDb
+        this.emit('levels', { micDb: this.micDb, sysDb: this.sysDb, sources: this.sourceLevels })
+      }, 150)
+    }
 
     let stderrTail = ''
     proc.stderr!.setEncoding('utf8')
@@ -199,6 +219,10 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     this.snapTimer = null
     this.pruneTimer = this.sysTimer = null
     this.sysQueue = []
+    for (const a of this.appSources.values()) a.stop()
+    this.appSources.clear()
+    if (this.appLevelTimer) clearInterval(this.appLevelTimer)
+    this.appLevelTimer = null
   }
 
   /** Renderer pushes 16-bit stereo 48 kHz PCM captured via Electron's loopback. */
@@ -295,10 +319,10 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
 
     // Inputs: one dshow input per enabled mic, plus system audio on stdin.
     const inputs: string[] = []
-    const sources = (s.audioSources ?? []).filter((x) => x.enabled && !this.missingSources.includes(x.id) && (x.kind === 'desktop' || x.device))
+    const sources = (s.audioSources ?? []).filter((x) => x.enabled && !this.missingSources.includes(x.id) && (x.kind === 'desktop' || (x.kind === 'app' ? this.appSources.has(x.id) : !!x.device)))
     const srcInput: { src: (typeof sources)[number]; idx: number }[] = []
     for (const src of sources) {
-      if (src.kind === 'desktop') continue
+      if (src.kind !== 'mic') continue
       srcInput.push({ src, idx: srcInput.length })
       // Small capture buffer: by default DirectShow hands over mic audio in ~0.5 s chunks, and FFmpeg
       // holds the screen capture back while it waits for audio to keep the streams in step, so the
@@ -309,6 +333,10 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     if (desktop) {
       srcInput.push({ src: desktop, idx: srcInput.length })
       inputs.push('-f', 's16le', '-ar', String(SYS_RATE), '-ac', String(SYS_CHANNELS), '-thread_queue_size', '2048', '-i', 'pipe:0')
+    }
+    for (const src of sources.filter((x) => x.kind === 'app')) {
+      srcInput.push({ src, idx: srcInput.length })
+      inputs.push('-f', 's16le', '-ar', String(SYS_RATE), '-ac', String(SYS_CHANNELS), '-thread_queue_size', '2048', '-i', this.appSources.get(src.id)!.pipePath)
     }
     this.triggerIds = sources.filter((x) => x.kind === 'mic' && x.trigger !== false).map((x) => x.id)
     this.sourceLevels = {}
@@ -343,16 +371,19 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     const tracks: { label: string; title: string }[] = []
     for (const { src, idx } of srcInput) {
       const tag = src.id.replace(/[^\w-]/g, '')
-      const outs = [`[mx_${tag}]`]
-      if (src.ownTrack) outs.push(`[tr_${tag}]`)
+      // App audio is already inside game & voice chat audio, so by default it only gets its own track.
+      const inMix = src.kind !== 'app' || !!src.inMix
+      const ownTrack = src.ownTrack || src.kind === 'app'
+      const outs = inMix ? [`[mx_${tag}]`] : []
+      if (ownTrack) outs.push(`[tr_${tag}]`)
       const meter = src.kind === 'mic'
       if (meter) outs.push(`[me_${tag}]`)
       const vol = Math.max(0, Math.min(2, src.volume ?? 1)).toFixed(2)
       const pre = `[${idx}:a]asetpts=PTS-STARTPTS,aresample=48000:async=1000,aformat=sample_rates=48000:channel_layouts=stereo,volume=${vol}`
       parts.push(outs.length > 1 ? `${pre},asplit=${outs.length}${outs.join('')}` : `${pre}${outs[0]}`)
       if (meter) parts.push(`[me_${tag}]asetnsamples=n=4800:p=0,astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,ametadata@m_${tag}=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1,anullsink`)
-      mixLabels.push(`[mx_${tag}]`)
-      if (src.ownTrack) tracks.push({ label: `[tr_${tag}]`, title: src.name })
+      if (inMix) mixLabels.push(`[mx_${tag}]`)
+      if (ownTrack) tracks.push({ label: `[tr_${tag}]`, title: src.name })
     }
     let audioOut = ''
     if (mixLabels.length > 1) {

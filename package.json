@@ -63,7 +63,8 @@
         "filter": [
           "icon*.png",
           "icon.ico",
-          "ocr.ps1"
+          "ocr.ps1",
+          "app-audio.ps1"
         ]
       },
       {

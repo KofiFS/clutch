@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Gamepad2, Headphones, Layers, Mic, Plus, Trash2, Volume2, VolumeX } from 'lucide-react'
+import { Gamepad2, Headphones, Layers, Mic, Plus, Trash2, Volume2, VolumeX, AppWindow, MessageSquare } from 'lucide-react'
 import type { AudioSource } from '../../../shared/types'
 import { useLevels } from '../lib/levels'
 import { useStore } from '../lib/store'
@@ -22,6 +22,9 @@ export function AudioSources() {
   const { settings, save, status } = useStore()
   const [devices, setDevices] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const [apps, setApps] = useState<{ process: string; title: string }[] | null>(null)
+  useEffect(() => { if (picking) { setApps(null); void window.cf.system.runningApps().then((a) => setApps(a.filter((x) => !/^(electron|clutch|explorer)$/i.test(x.process)))) } }, [picking])
   const refresh = async () => { setLoading(true); try { setDevices(await window.cf.system.audioDevices()) } finally { setLoading(false) } }
   useEffect(() => { void refresh() }, [])
   if (!settings) return null
@@ -37,7 +40,14 @@ export function AudioSources() {
     const name = VIRTUAL.test(device) ? device.replace(/\s*\(.*\)\s*$/, '') : n === 1 ? 'Microphone' : `Microphone ${n}`
     void set([...sources, { id, kind: 'mic', device, name, enabled: true, volume: 1, ownTrack: false, trigger: !VIRTUAL.test(device) }])
   }
-  const tracks = 1 + sources.filter((x) => x.enabled && x.ownTrack).length
+  const addApp = (process: string, name: string) => {
+    const p = process.toLowerCase().replace(/\.exe$/, '')
+    if (sources.some((x) => x.kind === 'app' && x.process === p)) return
+    void set([...sources, { id: `app${Date.now().toString(36)}`, kind: 'app', process: p, name, enabled: true, volume: 1, ownTrack: true, inMix: false }])
+    setPicking(false)
+  }
+  const hasDiscord = sources.some((x) => x.kind === 'app' && x.process === 'discord')
+  const tracks = 1 + sources.filter((x) => x.enabled && (x.ownTrack || x.kind === 'app')).length
 
   return (
     <Section
@@ -49,12 +59,13 @@ export function AudioSources() {
       <div className="space-y-2.5">
         {sources.map((src) => {
           const isDesktop = src.kind === 'desktop'
-          const missing = !isDesktop && !!src.device && devices.length > 0 && !devices.includes(src.device)
+          const isApp = src.kind === 'app'
+          const missing = src.kind === 'mic' && !!src.device && devices.length > 0 && !devices.includes(src.device)
           return (
             <div key={src.id} className={`card-2 p-3.5 transition-opacity ${src.enabled ? '' : 'opacity-60'}`}>
               <div className="flex items-center gap-3">
                 <span className={`w-9 h-9 rounded-xl grid place-items-center shrink-0 border ${src.enabled ? 'text-accent border-accent/35 bg-accent/10' : 'text-ink-3 border-white/10 bg-white/5'}`}>
-                  {isDesktop ? <Gamepad2 size={17} /> : <Mic size={17} />}
+                  {isDesktop ? <Gamepad2 size={17} /> : isApp ? <AppWindow size={17} /> : <Mic size={17} />}
                 </span>
                 <div className="min-w-0 flex-1 grid grid-cols-[minmax(0,200px)_minmax(0,1fr)] gap-3 items-center">
                   <input
@@ -65,6 +76,8 @@ export function AudioSources() {
                   />
                   {isDesktop ? (
                     <span className="text-xs text-ink-3 truncate">Everything you hear: game, Discord, music (Windows loopback)</span>
+                  ) : isApp ? (
+                    <span className="text-xs text-ink-3 truncate">Only {src.process}.exe and its helpers, on its own track. No virtual cable needed.</span>
                   ) : (
                     <select className="input h-9" value={src.device} onChange={(e) => void update(src.id, { device: e.target.value, trigger: !VIRTUAL.test(e.target.value) && src.trigger !== false })} aria-label="Device">
                       {src.device && !devices.includes(src.device) && <option value={src.device}>{src.device} (not plugged in)</option>}
@@ -100,8 +113,10 @@ export function AudioSources() {
                     <span className="font-hud text-[11px] tabular w-11 text-right">{Math.round(src.volume * 100)}%</span>
                   </div>
                   <div className="col-span-2 flex flex-wrap gap-x-6 gap-y-2">
-                    <Toggle checked={src.ownTrack} onChange={(ownTrack) => void update(src.id, { ownTrack })} label="Separate track" />
-                    {!isDesktop && <Toggle checked={src.trigger !== false} onChange={(trigger) => void update(src.id, { trigger })} label="Counts as my voice" hint="Used by the hype and “when I talk” triggers." />}
+                    {isApp
+                      ? <Toggle checked={!!src.inMix} onChange={(inMix) => void update(src.id, { inMix })} label="Also in the main mix" hint="Usually off: game & voice chat audio already includes it." />
+                      : <Toggle checked={src.ownTrack} onChange={(ownTrack) => void update(src.id, { ownTrack })} label="Separate track" />}
+                    {src.kind === 'mic' && <Toggle checked={src.trigger !== false} onChange={(trigger) => void update(src.id, { trigger })} label="Counts as my voice" hint="Used by the hype and “when I talk” triggers." />}
                   </div>
                 </div>
               )}
@@ -109,13 +124,27 @@ export function AudioSources() {
           )
         })}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button className="btn" onClick={addMic} disabled={!devices.length}><Plus size={15} /> Add microphone or input</button>
+        {!hasDiscord && <button className="btn" onClick={() => addApp('discord', 'Discord')}><MessageSquare size={15} /> Add Discord</button>}
+        <div className="relative">
+          <button className="btn" onClick={() => setPicking(!picking)} aria-expanded={picking}><AppWindow size={15} /> Add an app's audio</button>
+          {picking && (
+            <div className="absolute z-40 left-0 top-12 w-[320px] max-h-[300px] overflow-y-auto rounded-xl p-1.5 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)]" style={{ background: 'var(--color-card-2)' }} role="menu">
+              {apps === null && <p className="px-3 py-3 text-sm text-ink-3">Looking at open apps…</p>}
+              {apps?.map((a) => (
+                <button key={a.process} role="menuitem" className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/[0.07] text-sm" onClick={() => addApp(a.process, a.process === 'Discord' ? 'Discord' : a.title.length < 30 ? a.title : a.process)}>
+                  <span className="block truncate">{a.title || a.process}</span>
+                  <span className="block text-[11px] text-ink-3">{a.process}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button className="btn-ghost text-sm" onClick={() => void refresh()} disabled={loading}>{loading ? 'Looking…' : 'Rescan devices'}</button>
       </div>
       <p className="text-xs text-ink-3 leading-relaxed">
-        Want Discord or music on their own track? Send that app to a virtual cable (VB-Cable, Voicemeeter) in its audio settings, then add the cable here as an input with “Separate track” on.
-        {devices.some((d) => VIRTUAL.test(d)) ? ' A virtual cable was found on this PC.' : ''}
+        Want Discord or music on its own track? Add it as an app above: Clutch records just that app's sound (Windows 10 2004 or newer), no virtual cable or setup needed. Virtual cables still work as inputs if you already use them.
       </p>
     </Section>
   )
