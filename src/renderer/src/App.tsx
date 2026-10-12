@@ -68,9 +68,7 @@ function StatusStrip() {
 function TitleBar({ live, onSearch }: { live: boolean; onSearch: () => void }) {
   return (
     <div className="drag h-11 shrink-0 flex items-center px-5 gap-2.5 select-none relative z-10">
-      <img src="./icon.png" alt="" className="w-6 h-6" style={{ filter: "drop-shadow(0 0 8px rgba(40,140,255,0.7))" }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
-      <span className="font-hud text-[12px] font-bold tracking-[0.3em]">CLUTCH</span>
-      <span className="font-hud text-[9px] text-ink-3 tracking-[0.2em] mt-px">BETA</span>
+      <img src="./icon.png" alt="Clutch" title="Clutch" className="w-6 h-6" style={{ filter: "drop-shadow(0 0 8px rgba(40,140,255,0.7))" }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
       <StatusStrip />
       {live && <span className="sr-only">Recording</span>}
       <button
