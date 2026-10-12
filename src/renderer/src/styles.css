@@ -325,3 +325,7 @@ html[data-window-glass='on'] .cf-aurora { opacity: 0.35 !important; }
 }
 .mini-wide:hover { background: rgba(255, 255, 255, 0.12); color: var(--color-ink); }
 .mini-wide:disabled { opacity: 0.4; cursor: default; }
+
+/* Clip viewer in fullscreen: player column fills the screen on a solid background. */
+.clip-player:fullscreen { background: #03050b; }
+.clip-player:fullscreen > div:nth-child(2) { margin: 0; border-radius: 0; }

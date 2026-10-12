@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, FolderOpen, Heart, Pause, Play, Scissors, Trash2, Volume2, VolumeX, X, Repeat } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FolderOpen, Heart, Maximize, Minimize, PanelRightClose, PanelRightOpen, Pause, Play, Scissors, Trash2, Volume2, VolumeX, X, Repeat } from 'lucide-react'
 import type { Clip } from '../../../shared/types'
 import { fileUrl, fmtBytes, fmtTime, useStore } from '../lib/store'
 import { GameIcon, InlineEdit, Kbd, useConfirm } from './ui'
@@ -32,6 +32,23 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
   const scrubRef = useRef<number | null>(null)
   const setScrub = (t: number | null) => { scrubRef.current = t; setScrubState(t) }
   const [hover, setHover] = useState<{ x: number; t: number } | null>(null)
+  // Bigger video: hide the details panel (T), or go fullscreen with the timeline and controls (F).
+  const player = useRef<HTMLDivElement>(null)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [wide, setWide] = useState(() => { try { return localStorage.getItem('cf.viewer.wide') === '1' } catch { return false } })
+  useEffect(() => { try { localStorage.setItem('cf.viewer.wide', wide ? '1' : '0') } catch { /* private mode */ } }, [wide])
+  useEffect(() => {
+    const on = () => setFullscreen(document.fullscreenElement === player.current && !!player.current)
+    document.addEventListener('fullscreenchange', on)
+    return () => {
+      document.removeEventListener('fullscreenchange', on)
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+    }
+  }, [])
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+    else void player.current?.requestFullscreen().catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     void window.cf.library.get(clipId).then((c) => setClip(c ?? null))
@@ -97,17 +114,20 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
         case '.': seek((v?.currentTime ?? 0) + 1 / 60); break
         case 'i': case 'I': setTrim((t) => ({ start: Math.min(v?.currentTime ?? 0, (t?.end ?? duration) - 0.5), end: t?.end ?? duration })); break
         case 'o': case 'O': setTrim((t) => ({ start: t?.start ?? 0, end: Math.max(v?.currentTime ?? duration, (t?.start ?? 0) + 0.5) })); break
-        case 'f': case 'F': toggleFav(); break
+        case 'f': case 'F': toggleFullscreen(); break
+        case 'l': case 'L': toggleFav(); break
+        case 't': case 'T': if (!document.fullscreenElement) setWide((w) => !w); break
         case 'm': case 'M': setMuted((m) => !m); break
         case 'Delete': void remove(); break
         case '[': if (neighbors.prev) openClip(neighbors.prev); break
         case ']': if (neighbors.next) openClip(neighbors.next); break
-        case 'Escape': onClose(); break
+        // In fullscreen, Esc only leaves fullscreen (Electron doesn't do it by itself); it doesn't close the clip.
+        case 'Escape': if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); else onClose(); break
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [togglePlay, seek, duration, toggleFav, remove, neighbors, openClip, onClose])
+  }, [togglePlay, seek, duration, toggleFav, toggleFullscreen, remove, neighbors, openClip, onClose])
 
   // Timeline: click or drag anywhere to scrub. While dragging, playback pauses and the playhead
   // follows the cursor immediately (timeupdate only fires ~4x a second); playback resumes on release.
@@ -159,7 +179,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
     <div className="fixed inset-0 z-[100] bg-[rgba(2,8,20,0.5)] backdrop-blur-xl flex items-center justify-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div role="dialog" aria-modal="true" className="card hud w-full max-w-[1320px] h-full max-h-[880px] flex overflow-hidden shadow-[var(--shadow-pop)] pop-in" style={{ background: 'linear-gradient(160deg, rgba(14,22,40,0.92), rgba(6,10,20,0.94))' }}>
         {/* Player column */}
-        <div className="relative z-[2] flex-1 min-w-0 flex flex-col">
+        <div ref={player} className="clip-player relative z-[2] flex-1 min-w-0 flex flex-col">
           <div className="flex items-center gap-2 px-5 h-14 border-b border-white/10">
             <GameIcon src={clip.gameIcon ? fileUrl(clip.gameIcon) : undefined} name={clip.game} size={18} />
             <InlineEdit value={clip.title} onSave={(title) => void window.cf.library.update(clip.id, { title })} className="font-semibold text-[15px] truncate max-w-[520px]" />
@@ -167,17 +187,18 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
             <div className="ml-auto flex items-center gap-1">
               <button className="btn-ghost h-9 w-9 px-0" disabled={!neighbors.prev} onClick={() => neighbors.prev && openClip(neighbors.prev)} title="Previous clip ["><ChevronLeft size={18} /></button>
               <button className="btn-ghost h-9 w-9 px-0" disabled={!neighbors.next} onClick={() => neighbors.next && openClip(neighbors.next)} title="Next clip ]"><ChevronRight size={18} /></button>
-              <button className="btn-ghost h-9 w-9 px-0" onClick={onClose} aria-label="Close"><X size={18} /></button>
+              {!fullscreen && <button className="btn-ghost h-9 w-9 px-0" onClick={() => setWide(!wide)} aria-label={wide ? 'Show details panel' : 'Hide details panel'} title={`${wide ? 'Show' : 'Hide'} details (T)`}>{wide ? <PanelRightOpen size={18} /> : <PanelRightClose size={18} />}</button>}
+              <button className="btn-ghost h-9 w-9 px-0" onClick={fullscreen ? toggleFullscreen : onClose} aria-label={fullscreen ? 'Exit fullscreen' : 'Close'}>{fullscreen ? <Minimize size={18} /> : <X size={18} />}</button>
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 grid place-items-center relative bg-black/70 m-3 mb-0 rounded-[18px] overflow-hidden" onClick={togglePlay}>
+          <div className="flex-1 min-h-0 grid place-items-center relative bg-black/70 m-3 mb-0 rounded-[18px] overflow-hidden" onClick={togglePlay} onDoubleClick={toggleFullscreen}>
             <video
               ref={video}
               src={fileUrl(clip.file)}
               autoPlay
               muted={muted}
-              className="max-w-full max-h-full"
+              className="max-w-full max-h-full w-full h-full object-contain"
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
@@ -252,16 +273,17 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                 </>
               ) : (
                 <>
-                  <span className="text-[11px] text-ink-3 hidden xl:flex items-center gap-1.5"><Kbd>Space</Kbd> play <Kbd>←</Kbd><Kbd>→</Kbd> 1s <Kbd>I</Kbd><Kbd>O</Kbd> trim <Kbd>F</Kbd> fav <Kbd>[</Kbd><Kbd>]</Kbd> prev/next</span>
+                  <span className="text-[11px] text-ink-3 hidden xl:flex items-center gap-1.5"><Kbd>Space</Kbd> play <Kbd>←</Kbd><Kbd>→</Kbd> 1s <Kbd>I</Kbd><Kbd>O</Kbd> trim <Kbd>F</Kbd> fullscreen <Kbd>L</Kbd> fav</span>
                   <button className="btn-sm" onClick={() => setTrim({ start: 0, end: duration })}><Scissors size={13} /> Trim</button>
                 </>
               )}
+              <button className="btn-ghost h-9 w-9 px-0" onClick={toggleFullscreen} aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title={fullscreen ? 'Exit fullscreen (F or Esc)' : 'Fullscreen (F)'}>{fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}</button>
             </div>
           </div>
         </div>
 
         {/* Side panel */}
-        <aside className="relative z-[2] w-[340px] shrink-0 border-l border-white/10 flex flex-col">
+        <aside className={`relative z-[2] w-[340px] shrink-0 border-l border-white/10 flex-col ${wide ? 'hidden' : 'flex'}`}>
           <div className="flex p-2.5 gap-1 border-b border-white/10">
             {(['details', 'share'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={`flex-1 h-9 rounded-full text-sm font-medium capitalize transition-all ${tab === t ? 'text-ink liquid bg-white/15 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.5),0_0_16px_-6px_rgba(79,227,255,0.7)]' : 'text-ink-3 hover:text-ink-2'}`}>{t}</button>

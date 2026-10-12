@@ -63,7 +63,8 @@ so it never shows up in clips.
 
 - Anywhere: `Ctrl+K` search · `Ctrl+1…5` switch pages.
 - Clip viewer: `Space`/`K` play · `←`/`→` 1 s (`Shift` 5 s) · `,`/`.` one frame · `I`/`O` trim in/out ·
-  `F` favorite · `M` mute · `[`/`]` previous/next · `Delete` trash · `Esc` close. Drag the timeline to scrub.
+  `F` fullscreen (or double-click the video) · `T` hide/show the details panel · `L` favorite · `M` mute ·
+  `[`/`]` previous/next · `Delete` trash · `Esc` close (or leave fullscreen). Drag the timeline to scrub.
 - Clips page: `/` search · `Ctrl+A` select all · `Delete` trash selection · `Shift+click` range select.
 
 ## Discord
