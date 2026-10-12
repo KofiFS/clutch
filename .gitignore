@@ -7,3 +7,4 @@ server/data
 server/.env
 resources/ffmpeg
 *.tsbuildinfo
+scripts/benchmark-*.json

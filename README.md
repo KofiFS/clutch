@@ -80,19 +80,33 @@ anyone can point their app at a self-hosted server under Settings → Account.
 
 ```
 screen (ddagrab, on the GPU) ──────┐
-mics / virtual cables (dshow) ─────┼─► one FFmpeg process ─► 2-second MPEG-TS segments (ring buffer)
-system audio (WASAPI loopback) ────┘                       └─► low-rate JPEGs, only while AI watching is on
+mics / virtual cables (dshow) ─────┤
+system audio (WASAPI loopback) ────┼─► one FFmpeg process ─► 2-second MPEG-TS segments (ring buffer)
+one app, e.g. Discord (per-process ┘
+  loopback, own track)
+AI screen watching (optional): small frames taken from finished segments in a separate process
 ```
 
 Saving a clip stitches segments with stream copy, so it is instant and never re-encodes. Track 1 is
 always the mix; separate tracks follow it and are named in the MP4.
 
-Measured on an RTX 5090 at 5120x1440, 60 fps, with the window in the tray:
+### Measure it yourself
 
-| Process | CPU (one core) | RAM |
+`node scripts/benchmark.mjs 60` while Clutch records adds up every Clutch process (app, FFmpeg,
+helpers) and saves CPU, memory and NVENC load to a JSON file. Please share yours with your CPU,
+GPU and resolution: numbers from common cards (RTX 3060 / RX 6600 class at 1080p) are the most
+useful. Reference run (RTX 5090, 32 threads, 5120x1440 at 60 fps, main window open, plus a
+Discord-only track):
+
+| Process | CPU (whole PC) | RAM |
 |---|---|---|
-| FFmpeg | ~3% | ~190 MB |
-| Clutch | ~1.6% | ~650 MB |
+| Clutch app (5 processes) | 0.8% | 660 MB |
+| FFmpeg (recording) | 0.7% | 190 MB |
+| Helpers (game detection, app audio) | <0.1% | 175 MB |
+| NVENC encoder | 18% | |
+
+Background work (exports, Discord copies, thumbnails, text reading, game detection) runs below
+normal priority; only the live recording stays at normal so it never drops frames.
 
 ## Project layout
 

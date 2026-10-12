@@ -9,7 +9,7 @@
 | Long recording | Alt+F9 | Keeps everything from start to stop and saves one file. Alt+F8 adds bookmarks. |
 | Hype moments | What to clip | No AI. Learns your normal loudness and clips sudden spikes (15 s cooldown). |
 | When people talk | What to clip | No AI. One clip per stretch of conversation on your mic and/or voice chat. |
-| Watch the screen | What to clip | Optional AI. Your plain-English rules are checked against a screenshot every few seconds (20 s cooldown between clips). Needs an Anthropic API key; costs one small request per check. |
+| Watch the screen | What to clip | Optional AI. Clutch looks at the screen every few seconds on your PC and only asks the AI (Claude Haiku) when the picture changes a lot or the audio gets loud, at most 6 times a minute, so menus and lobbies cost nothing. Works with your own Anthropic key or a Clutch account (60 checks a day free, 800 on Pro). Small screenshots are sent only while it's on. |
 
 Started a game before Clutch, or it's open behind another window? Clutch looks through open windows
 when it starts and every 15 s while idle, and records the game it finds. You can also point it at one:
@@ -77,12 +77,26 @@ so it never shows up in clips.
 
 Big or HEVC clips get an H.264 copy sized to the server's upload limit so they play inline.
 
-## YouTube
+## Sharing
 
-1. console.cloud.google.com → new project → enable **YouTube Data API v3**.
-2. Credentials → **OAuth client ID** → type **Desktop app**.
-3. Clutch → Settings → Accounts → paste the client ID and secret → Connect.
-4. Upload from a clip's Share tab, or turn on **Uploads → Auto-upload schedule** (needs a Clutch account).
+- **Copy link** (clip viewer header, or the link icon on any clip card) uploads the clip once and
+  copies a link that plays right inside Discord and browsers. Needs a free Clutch account.
+- **YouTube:** Settings → Accounts → **Connect YouTube** and sign in with Google in your browser.
+  Videos upload straight from your PC. (Advanced: you can still use your own Google app instead.)
+  Upload from a clip's Share tab, or turn on **Uploads → Auto-upload schedule**.
+
+## Editing
+
+The clip viewer's **Edit** tab: 9:16 (TikTok, Shorts, Reels), 1:1 or 16:9 with a crop frame you
+drag on the video or the whole picture over a blurred copy; speed 0.25x-2x; captions from speech
+(on your PC; a 57 MB speech model downloads the first time). It uses your trim range and saves a
+new clip. In Clips, select two or more clips and press **Join** to make one video.
+
+## Storage limits
+
+Settings → Storage: keep clips under a size (100 GB by default; the trash goes first, then the
+oldest clips) and optionally delete clips older than N days. Favorites are never deleted
+automatically. Clutch warns when the drive runs low and pauses recording before it fills.
 
 ## Clip of the day scoring
 

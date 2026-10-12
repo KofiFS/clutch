@@ -180,7 +180,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
   const shown = scrub ?? time
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[rgba(2,8,20,0.5)] backdrop-blur-xl flex items-center justify-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div role="dialog" aria-modal="true" className="card hud w-full max-w-[1320px] h-full max-h-[880px] flex overflow-hidden shadow-[var(--shadow-pop)] pop-in" style={{ background: 'linear-gradient(160deg, rgba(24,24,28,0.92), rgba(14,14,17,0.94))' }}>
         {/* Player column */}
         <div ref={player} className="clip-player relative z-[2] flex-1 min-w-0 flex flex-col">
@@ -238,7 +238,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
               onPointerLeave={() => { if (!dragging.current) setHover(null) }}
             >
               {/* progress */}
-              <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${pct(shown)}%`, background: 'linear-gradient(90deg, rgba(155,123,255,0.35), rgba(38,187,255,0.45))' }} />
+              <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${pct(shown)}%`, background: 'rgba(38,187,255,0.35)' }} />
               {hover && !dragging.current && <div className="absolute top-0 bottom-0 w-px bg-white/35 pointer-events-none" style={{ left: hover.x }} />}
               {trim && (
                 <>
