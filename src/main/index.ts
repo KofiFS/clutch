@@ -382,6 +382,32 @@ app.whenReady().then(async () => {
   ipcMain.handle('system:testOverlay', () => overlay?.show('Clipped!', 'This is how it looks in game', 'clip'))
   ipcMain.handle('system:canAcrylic', () => canAcrylic)
   ipcMain.handle('update:state', () => updater.state)
+  // ---- Editor: crop / vertical / speed / captions, and joining clips. Results are new clips.
+  const editorProgress = (clipId: string) => (stage: string, f: number) => send('editor-progress', { clipId, stage, progress: f })
+  ipcMain.handle('editor:captionModel', async () => (await import('./editor')).captionModelReady())
+  ipcMain.handle('editor:downloadCaptionModel', async () => {
+    const ed = await import('./editor')
+    await ed.downloadCaptionModel((f) => send('editor-progress', { clipId: '*model', stage: 'Downloading speech model', progress: f }))
+    return ed.captionModelReady()
+  })
+  ipcMain.handle('editor:export', async (_e, clipId: string, opts: import('../shared/types').EditOptions) => {
+    const clip = recorder.library.get(clipId)
+    if (!clip) throw new Error('Clip not found')
+    const { exportEdit } = await import('./editor')
+    const out = await exportEdit(clip, opts, editorProgress(clipId))
+    const added = await recorder.library.add(out.file, { game: clip.game, gameProcess: clip.gameProcess, gameIcon: clip.gameIcon, trigger: 'manual', title: out.title, tags: clip.tags })
+    recorder.log('clip', `Exported "${added.title}"`, added.id)
+    return added
+  })
+  ipcMain.handle('editor:join', async (_e, ids: string[]) => {
+    const clips = ids.map((id) => recorder.library.get(id)).filter((c): c is NonNullable<typeof c> => !!c).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+    const { joinClips } = await import('./editor')
+    const out = await joinClips(clips, (f) => send('editor-progress', { clipId: '*join', stage: 'Joining', progress: f }))
+    const games = [...new Set(clips.map((c) => c.game))]
+    const added = await recorder.library.add(out.file, { game: games.length === 1 ? games[0] : 'Montage', gameIcon: games.length === 1 ? clips[0].gameIcon : undefined, trigger: 'manual', title: out.title })
+    recorder.log('clip', `Joined ${clips.length} clips into "${added.title}"`, added.id)
+    return added
+  })
   ipcMain.handle('update:install', () => updater.install())
   ipcMain.handle('system:diskFree', async (_e, dir: string) => {
     const { freeBytes } = await import('./library/janitor')

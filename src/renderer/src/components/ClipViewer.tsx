@@ -6,6 +6,7 @@ import { GameIcon, InlineEdit, Kbd, useConfirm } from './ui'
 import { useToast } from './Toasts'
 import { SharePanel } from './SharePanel'
 import { CopyLinkButton } from './CopyLinkButton'
+import { CropOverlay, DEFAULT_EDIT, EditPanel, type EditState } from './EditPanel'
 
 /**
  * Full clip viewer: player, trim timeline with draggable in/out handles, metadata, share panel,
@@ -24,7 +25,9 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
   const [trim, setTrim] = useState<{ start: number; end: number } | null>(null)
   const [loop, setLoop] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState<'details' | 'share'>('details')
+  const [tab, setTab] = useState<'details' | 'edit' | 'share'>('details')
+  const [edit, setEdit] = useState<EditState>(DEFAULT_EDIT)
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
   const video = useRef<HTMLVideoElement>(null)
   const timeline = useRef<HTMLDivElement>(null)
   const dragging = useRef<'start' | 'end' | 'seek' | null>(null)
@@ -59,7 +62,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
     })
     setTrim(null)
   }, [clipId, libraryVersion])
-  useEffect(() => { setTab('details'); void window.cf.library.viewed(clipId) }, [clipId])
+  useEffect(() => { setTab('details'); setEdit(DEFAULT_EDIT); void window.cf.library.viewed(clipId) }, [clipId])
 
   const seek = useCallback((t: number) => { if (video.current) video.current.currentTime = Math.max(0, Math.min(duration, t)) }, [duration])
   const togglePlay = useCallback(() => { const v = video.current; if (!v) return; v.paused ? void v.play() : v.pause() }, [])
@@ -197,7 +200,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
 
           <div className="flex-1 min-h-0 grid place-items-center relative bg-black/70 m-3 mb-0 rounded-[18px] overflow-hidden" onClick={togglePlay} onDoubleClick={toggleFullscreen}>
             <video
-              ref={video}
+              ref={(el) => { video.current = el; if (el !== videoEl) setVideoEl(el) }}
               src={fileUrl(clip.file)}
               autoPlay
               muted={muted}
@@ -208,6 +211,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
               onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
               onEnded={() => { if (!trim) { seek(0); void video.current?.play() } }}
             />
+            {tab === 'edit' && <CropOverlay video={videoEl} edit={edit} setEdit={setEdit} />}
             {!playing && (
               <div className="absolute inset-0 grid place-items-center pointer-events-none">
                 <div className="w-16 h-16 rounded-full bg-black/60 border border-white/10 grid place-items-center"><Play size={26} className="text-white ml-1" /></div>
@@ -288,8 +292,8 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
         {/* Side panel */}
         <aside className={`relative z-[2] w-[340px] shrink-0 border-l border-white/10 flex-col ${wide ? 'hidden' : 'flex'}`}>
           <div className="flex p-2.5 gap-1 border-b border-white/10">
-            {(['details', 'share'] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={`flex-1 h-9 rounded-full text-sm font-medium capitalize transition-all ${tab === t ? 'text-ink liquid bg-white/15 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.5),0_0_16px_-6px_rgba(38,187,255,0.7)]' : 'text-ink-3 hover:text-ink-2'}`}>{t}</button>
+            {(['details', 'edit', 'share'] as const).map((t) => (
+              <button key={t} onClick={() => setTab(t)} className={`flex-1 h-9 rounded-[9px] text-sm font-medium capitalize transition-colors ${tab === t ? 'text-ink bg-white/[0.09]' : 'text-ink-3 hover:text-ink-2'}`}>{t}</button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">
@@ -350,6 +354,8 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                   <button className="btn-danger" onClick={() => void remove()}><Trash2 size={15} /> Delete</button>
                 </div>
               </div>
+            ) : tab === 'edit' ? (
+              <EditPanel clip={clip} edit={edit} setEdit={setEdit} trim={trim} />
             ) : (
               <SharePanel clip={clip} />
             )}

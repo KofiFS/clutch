@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckSquare, Eye, Film, Flame, MessageSquare, Video, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2 } from 'lucide-react'
+import { CheckSquare, Eye, Film, Flame, MessageSquare, Video, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2, Combine, Loader2 } from 'lucide-react'
 import type { Clip, TriggerSource } from '../../../shared/types'
 import { dayLabel, fileUrl, fmtDuration, timeAgo, useStore } from '../lib/store'
 import type { GameSummary } from '../../../shared/types'
@@ -90,6 +90,23 @@ export default function Library() {
       title: toTrash ? `Moved ${ids.length} clip${ids.length > 1 ? 's' : ''} to trash` : `Deleted ${ids.length} clip${ids.length > 1 ? 's' : ''}`,
       action: toTrash ? { label: 'Undo', onClick: () => void window.cf.library.restore(ids) } : undefined
     })
+  }
+  const [joining, setJoining] = useState<string | null>(null)
+  useEffect(() => {
+    const off = window.cf.on('editor-progress', (p: { clipId: string; progress: number }) => { if (p.clipId === '*join') setJoining(`Joining ${Math.round(p.progress * 100)}%`) })
+    return () => { off() }
+  }, [])
+  const joinSelected = async () => {
+    setJoining('Joining…')
+    try {
+      const out = await window.cf.editor.join([...selected])
+      setSelected(new Set())
+      toast.push({ kind: 'success', title: 'Clips joined', body: out.title, action: { label: 'Open', onClick: () => openClip(out.id) } })
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Could not join', body: String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '') })
+    } finally {
+      setJoining(null)
+    }
   }
   const bulkFav = (favorite: boolean) => void window.cf.library.bulk([...selected], { favorite })
   const bulkTag = () => { if (tagDraft?.trim()) void window.cf.library.bulk([...selected], { addTags: tagDraft.split(',').map((t) => t.trim()).filter(Boolean) }); setTagDraft(null) }
@@ -220,6 +237,7 @@ export default function Library() {
               ) : (
                 <input autoFocus className="input h-8 w-44 text-xs" placeholder="funny, clutch…" value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') bulkTag(); if (e.key === 'Escape') setTagDraft(null) }} onBlur={bulkTag} />
               )}
+              <button className="btn-sm" onClick={() => void joinSelected()} disabled={selected.size < 2 || !!joining} title="Join the selected clips into one video, oldest first">{joining ? <Loader2 size={13} className="animate-spin" /> : <Combine size={13} />} {joining ?? 'Join'}</button>
               <button className="btn-sm" onClick={() => void bulkDiscord()} disabled={!settings?.discord.webhookUrl} title={settings?.discord.webhookUrl ? '' : 'Add a Discord webhook in Settings first'}><MessageSquare size={13} /> Discord</button>
               <button className="btn-sm" onClick={bulkUpload} disabled={!settings?.upload.youtube.connected} title={settings?.upload.youtube.connected ? '' : 'Connect YouTube first'}><UploadCloud size={13} /> Upload</button>
               <button className="btn-sm hover:text-bad" onClick={() => void trashSelected()}><Trash2 size={13} /> Delete <Kbd>Del</Kbd></button>

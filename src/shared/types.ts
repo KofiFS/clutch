@@ -547,3 +547,20 @@ export interface ImportResult {
   /** Lines of text recognized (0 means the picture had no readable text). */
   lines?: number
 }
+
+/** Export options for the clip editor (crop / reframe, speed, captions). */
+export interface EditOptions {
+  /** Trimmed range in seconds; whole clip when omitted. */
+  start?: number
+  end?: number
+  format: 'original' | 'vertical' | 'square' | 'wide'
+  /** For non-original formats: crop to the frame, or fit the whole picture over a blurred copy. */
+  fit: 'crop' | 'blur'
+  /** Crop frame position, 0..1 (0.5 = centered). */
+  cropX?: number
+  cropY?: number
+  /** 0.25 .. 4 */
+  speed: number
+  /** Burn in automatic captions (speech-to-text on this PC). */
+  captions: boolean
+}

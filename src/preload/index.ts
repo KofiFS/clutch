@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, GameInfo, GameSummary, HealthItem, ImportChange, ImportResult, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
+import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, EditOptions, GameInfo, GameSummary, HealthItem, ImportChange, ImportResult, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
 
 export interface LibraryQuery {
   text?: string
@@ -19,7 +19,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress'
 
 const api = {
   settings: {
@@ -81,6 +81,12 @@ const api = {
   updates: {
     state: (): Promise<{ ready?: string; checking?: boolean; error?: string }> => ipcRenderer.invoke('update:state'),
     install: (): Promise<void> => ipcRenderer.invoke('update:install')
+  },
+  editor: {
+    captionModelReady: (): Promise<boolean> => ipcRenderer.invoke('editor:captionModel'),
+    downloadCaptionModel: (): Promise<boolean> => ipcRenderer.invoke('editor:downloadCaptionModel'),
+    export: (clipId: string, opts: EditOptions): Promise<Clip> => ipcRenderer.invoke('editor:export', clipId, opts),
+    join: (ids: string[]): Promise<Clip> => ipcRenderer.invoke('editor:join', ids)
   },
   /** Bring settings over from another recorder. */
   importer: {
