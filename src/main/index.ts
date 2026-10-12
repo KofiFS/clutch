@@ -653,6 +653,23 @@ app.whenReady().then(async () => {
     return { progress: compressor.progress, existingCount: existing.length, existingBytes: existing.reduce((n, c) => n + (c.sizeBytes || 0), 0) }
   })
   ipcMain.handle('storage:shrinkExisting', () => compressor.shrinkExisting())
+  ipcMain.handle('library:exportCompatibleMany', async (_e, ids: string[]) => {
+    const clips = ids.map((id) => recorder.library.get(id)).filter((c): c is NonNullable<typeof c> => !!c)
+    if (!clips.length) return null
+    const r = await dialog.showOpenDialog(win!, { title: 'Save MP4 copies to…', defaultPath: app.getPath('videos'), properties: ['openDirectory', 'createDirectory'] })
+    if (r.canceled || !r.filePaths[0]) return null
+    const folder = r.filePaths[0]
+    const { exportCompatible } = await import('./editor')
+    const used = new Set<string>()
+    for (const [i, clip] of clips.entries()) {
+      let base = clip.title.replace(/[<>:"/\\|?*]+/g, '').trim() || 'Clip'
+      for (let n = 2; used.has(base.toLowerCase()); n++) base = `${clip.title.replace(/[<>:"/\\|?*]+/g, '').trim() || 'Clip'} ${n}`
+      used.add(base.toLowerCase())
+      await exportCompatible(clip, path.join(folder, `${base}.mp4`), (f) => send('editor-progress', { clipId: '*export', stage: `Saving ${i + 1} of ${clips.length} · ${Math.round(f * 100)}%`, progress: f }))
+    }
+    void shell.openPath(folder)
+    return { folder, count: clips.length }
+  })
   ipcMain.handle('library:exportCompatible', async (_e, clipId: string) => {
     const clip = recorder.library.get(clipId)
     if (!clip) throw new Error('Clip not found')

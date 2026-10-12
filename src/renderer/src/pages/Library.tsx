@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckSquare, Eye, Film, Flame, MessageSquare, Video, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2, Combine, Loader2 } from 'lucide-react'
+import { CheckSquare, Eye, Film, Flame, MessageSquare, Video, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2, Combine, Loader2, Check, Download } from 'lucide-react'
 import type { Clip, TriggerSource } from '../../../shared/types'
 import { dayLabel, fileUrl, fmtDuration, timeAgo, useStore } from '../lib/store'
 import type { GameSummary } from '../../../shared/types'
@@ -42,7 +42,7 @@ export default function Library() {
     void window.cf.library.games().then(setGames)
   }, [text, game, trigger, fav, sort, view])
   useEffect(reload, [reload, libraryVersion])
-  useEffect(() => setSelected(new Set()), [view, game, trigger, fav, text])
+  useEffect(() => { setSelected(new Set()) }, [view, game, trigger, fav, text])
 
   // Keyboard: / focus search, Ctrl+A select all, Delete trash selection, Esc clear selection
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function Library() {
       if (viewerClipId) return
       const typing = (e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA'
       if (e.key === '/' && !typing) { e.preventDefault(); searchRef.current?.focus() }
-      if (e.key === 'Escape') { setSelected(new Set()); setTagDraft(null); searchRef.current?.blur() }
+      if (e.key === 'Escape') { setSelected(new Set()); setSelectMode(false); setTagDraft(null); searchRef.current?.blur() }
       if (e.ctrlKey && e.key.toLowerCase() === 'a' && !typing) { e.preventDefault(); setSelected(new Set(clips.map((c) => c.id))) }
       if (e.key === 'Delete' && selected.size && !typing) void trashSelected()
     }
@@ -67,7 +67,27 @@ export default function Library() {
     return [...map.entries()]
   }, [clips, view])
 
-  const toggleSelect = (c: Clip, e: React.MouseEvent) => {
+  // Select mode: checkboxes on every card and a click selects instead of opening.
+  const [selectMode, setSelectMode] = useState(false)
+  const selecting = selectMode || selected.size > 0
+  const selectAll = () => setSelected(new Set(clips.map((c) => c.id)))
+  const clearSelection = () => { setSelected(new Set()); setSelectMode(false) }
+  const [exporting, setExporting] = useState<string | null>(null)
+  const exportSelected = async () => {
+    setExporting('Saving…')
+    try {
+      const r = await window.cf.library.exportCompatibleMany([...selected])
+      if (r) toast.push({ kind: 'success', title: `Saved ${r.count} MP4${r.count === 1 ? '' : 's'}`, body: r.folder })
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Could not save', body: String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '') })
+    } finally { setExporting(null) }
+  }
+  useEffect(() => {
+    const off = window.cf.on('editor-progress', (p: { clipId: string; stage: string; progress: number }) => { if (p.clipId === '*export') setExporting(p.stage) })
+    return () => { off() }
+  }, [])
+
+  const toggleSelect = (c: Clip, e: React.MouseEvent | React.KeyboardEvent) => {
     const next = new Set(selected)
     if (e.shiftKey && lastClicked.current) {
       const ids = clips.map((x) => x.id)
@@ -130,6 +150,14 @@ export default function Library() {
           <p className="text-ink-3 text-sm mt-1">{clips.length} {view === 'trash' ? 'in trash' : 'clips'}{game ? ` in ${game}` : ''} · <button className="hover:text-ink underline-offset-2 hover:underline" onClick={() => void window.cf.library.openFolder()}>{settings?.capture.outputDir}</button></p>
         </div>
         <div className="flex items-center gap-2">
+          {selecting ? (
+            <>
+              <button className="btn" onClick={selectAll}><CheckSquare size={15} /> Select all</button>
+              <button className="btn" onClick={clearSelection}>Done</button>
+            </>
+          ) : (
+            <button className="btn" onClick={() => setSelectMode(true)} disabled={!clips.length} title="Pick several clips to delete, tag, join, export or share at once (or Ctrl+click / Shift+click)"><CheckSquare size={15} /> Select</button>
+          )}
           <button className={`btn ${view === 'trash' ? 'border-accent' : ''}`} onClick={() => setView(view === 'trash' ? 'clips' : 'trash')}><Trash2 size={15} /> {view === 'trash' ? 'Back to clips' : 'Trash'}</button>
           <button className="btn" onClick={() => void window.cf.library.openFolder()}><FolderOpen size={15} /> Open folder</button>
         </div>
@@ -189,16 +217,24 @@ export default function Library() {
               const Icon = TRIGGER_ICON[c.trigger]
               const isSel = selected.has(c.id)
               return (
-                <div key={c.id} className={`card overflow-hidden group relative transition-all hover:border-line-strong hover:-translate-y-px ${isSel ? 'border-accent shadow-[var(--shadow-glow)]' : ''}`}>
-                  <button className="block w-full aspect-video bg-surface-3 relative" onClick={(e) => (selected.size || e.ctrlKey || e.shiftKey ? toggleSelect(c, e) : openClip(c.id))} aria-label={`Open ${c.title}`}>
+                <div key={c.id} className={`card overflow-hidden group relative transition-[transform,box-shadow] hover:-translate-y-px ${isSel ? 'ring-2 ring-accent' : ''}`}>
+                  <button className="block w-full aspect-video bg-surface-3 relative" onClick={(e) => (selecting || e.ctrlKey || e.shiftKey ? toggleSelect(c, e) : openClip(c.id))} aria-label={selecting ? `${isSel ? 'Deselect' : 'Select'} ${c.title}` : `Open ${c.title}`}>
                     <HoverPreview clip={c} />
                     <span className="absolute bottom-1.5 right-1.5 chip bg-black/70 border-0 text-white tabular">{fmtDuration(c.durationSec)}</span>
                     <span className="absolute top-1.5 right-1.5 chip bg-black/70 border-0 text-white"><Icon size={11} /> {TRIGGER_LABEL[c.trigger]}</span>
                     {c.uploads.some((u) => u.status === 'done') && <span className="absolute bottom-1.5 left-1.5 chip bg-black/70 border-0 text-white"><UploadCloud size={11} /> Uploaded</span>}
                   </button>
-                  <label className={`absolute top-2 left-2 w-7 h-7 rounded-md grid place-items-center bg-black/60 cursor-pointer transition-opacity ${isSel || selected.size ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} onClick={(e) => { e.preventDefault(); toggleSelect(c, e) }}>
-                    <input type="checkbox" className="check" checked={isSel} readOnly aria-label="Select clip" />
-                  </label>
+                  {/* A drawn checkbox (no native input), so the tick updates on the same click. */}
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={isSel}
+                    aria-label={`Select ${c.title}`}
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(c, e) }}
+                    className={`absolute top-2 left-2 w-7 h-7 rounded-lg grid place-items-center transition-opacity ${isSel ? 'bg-accent text-[#00131f]' : 'bg-black/60 text-transparent border border-white/40 hover:border-white'} ${isSel || selecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`}
+                  >
+                    <Check size={16} strokeWidth={3} />
+                  </button>
                   <div className="p-3">
                     <div className="flex items-start gap-2">
                       <GameIcon src={c.gameIcon ? fileUrl(c.gameIcon) : undefined} name={c.game} size={18} className="mt-0.5" />
@@ -223,10 +259,11 @@ export default function Library() {
       ))}
 
       {/* Bulk action bar */}
-      {selected.size > 0 && (
+      {(selected.size > 0 || selectMode) && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pop-in">
-        <div className="card-2 hud shadow-[var(--shadow-pop)] px-3 py-2 flex items-center gap-2 rounded-full">
-          <span className="text-sm font-medium px-2 flex items-center gap-2"><CheckSquare size={15} className="text-accent-2" /> {selected.size} selected</span>
+        <div className="card-2 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)] px-3 py-2 flex items-center gap-2 rounded-2xl">
+          <span className="text-sm font-medium px-2 flex items-center gap-2 whitespace-nowrap"><CheckSquare size={15} className="text-accent" /> {selected.size} selected</span>
+          {selected.size < clips.length && <button className="btn-sm" onClick={selectAll}>Select all</button>}
           <span className="w-px h-6 bg-line" />
           {view === 'clips' ? (
             <>
@@ -239,6 +276,7 @@ export default function Library() {
               )}
               <button className="btn-sm" onClick={() => void joinSelected()} disabled={selected.size < 2 || !!joining} title="Join the selected clips into one video, oldest first">{joining ? <Loader2 size={13} className="animate-spin" /> : <Combine size={13} />} {joining ?? 'Join'}</button>
               <button className="btn-sm" onClick={() => void bulkDiscord()} disabled={!settings?.discord.webhookUrl} title={settings?.discord.webhookUrl ? '' : 'Add a Discord webhook in Settings first'}><MessageSquare size={13} /> Discord</button>
+              <button className="btn-sm" onClick={() => void exportSelected()} disabled={!!exporting} title="Save normal MP4 copies that play everywhere into a folder you pick">{exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} {exporting ?? 'Save as MP4'}</button>
               <button className="btn-sm" onClick={bulkUpload} disabled={!settings?.upload.youtube.connected} title={settings?.upload.youtube.connected ? '' : 'Connect YouTube first'}><UploadCloud size={13} /> Upload</button>
               <button className="btn-sm hover:text-bad" onClick={() => void trashSelected()}><Trash2 size={13} /> Delete <Kbd>Del</Kbd></button>
             </>
@@ -248,7 +286,7 @@ export default function Library() {
               <button className="btn-sm hover:text-bad" onClick={async () => { if (await confirm({ title: 'Delete permanently?', body: 'This cannot be undone.', confirmLabel: 'Delete forever', danger: true })) { void window.cf.library.remove([...selected]); setSelected(new Set()) } }}><Trash2 size={13} /> Delete forever</button>
             </>
           )}
-          <button className="btn-ghost h-8 w-8 px-0" onClick={() => setSelected(new Set())} aria-label="Clear selection"><X size={14} /></button>
+          <button className="btn-ghost h-8 w-8 px-0" onClick={clearSelection} aria-label="Clear selection" title="Clear selection (Esc)"><X size={14} /></button>
         </div>
         </div>
       )}

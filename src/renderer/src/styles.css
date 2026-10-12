@@ -151,9 +151,10 @@ button:disabled { cursor: not-allowed; }
 }
 @keyframes ring { 0% { transform: scale(0.6); opacity: 0.8; } 100% { transform: scale(1.7); opacity: 0; } }
 
-@utility fade-in { animation: fadeIn 0.28s var(--ease-out) both; }
+/* backwards, not both: a held transform would make fixed children (bulk bar, popups) stick to the page instead of the window. */
+@utility fade-in { animation: fadeIn 0.28s var(--ease-out) backwards; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@utility pop-in { animation: popIn 0.34s var(--ease-spring) both; }
+@utility pop-in { animation: popIn 0.34s var(--ease-spring) backwards; }
 @keyframes popIn { from { opacity: 0; transform: scale(0.97) translateY(6px); } to { opacity: 1; transform: none; } }
 @utility shimmer {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.04) 75%);

@@ -124,6 +124,7 @@ const api = {
     viewed: (id: string): Promise<void> => ipcRenderer.invoke('library:viewed', id),
     waveform: (id: string): Promise<number[]> => ipcRenderer.invoke('library:waveform', id),
     exportCompatible: (id: string): Promise<string | null> => ipcRenderer.invoke('library:exportCompatible', id),
+    exportCompatibleMany: (ids: string[]): Promise<{ folder: string; count: number } | null> => ipcRenderer.invoke('library:exportCompatibleMany', ids),
     shrinkState: (): Promise<{ progress: ShrinkProgress; existingCount: number; existingBytes: number }> => ipcRenderer.invoke('storage:shrinkState'),
     shrinkExisting: (): Promise<void> => ipcRenderer.invoke('storage:shrinkExisting')
   },
