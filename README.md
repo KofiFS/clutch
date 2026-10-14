@@ -6,6 +6,11 @@
 <p align="center"><b>The game clip recorder you can tell what to clip.</b><br>
 Free and open source for Windows. Lightweight like NVIDIA's recorder, social like Medal, no ads you can't turn off.</p>
 
+<p align="center">
+  <a href="https://github.com/KofiFS/clutch/releases/latest/download/Clutch-Setup.exe"><img src="https://img.shields.io/badge/Download%20for%20Windows-26bbff?style=for-the-badge&logo=windows&logoColor=white" alt="Download Clutch for Windows" height="44"></a>
+</p>
+<p align="center"><sub>Windows 10 and 11 · free · <a href="../../releases">all versions</a></sub></p>
+
 ---
 
 ## Features
@@ -39,7 +44,13 @@ Free and open source for Windows. Lightweight like NVIDIA's recorder, social lik
 
 ## Install
 
-Download `Clutch-Setup-x.y.z.exe` from [Releases](../../releases). Windows 10 or 11 and a GPU from the last few generations are recommended.
+1. **[Download Clutch for Windows](https://github.com/KofiFS/clutch/releases/latest/download/Clutch-Setup.exe)** (always the newest version).
+2. Open the downloaded `Clutch-Setup.exe` and click through the setup. No admin rights needed.
+3. Clutch opens and walks you through a one-minute setup. Updates install themselves after that.
+
+Until the installer is code-signed, Windows may show "Windows protected your PC": click
+**More info**, then **Run anyway**. Windows 10 or 11 and a GPU from the last few generations are
+recommended.
 
 ## Build from source
 

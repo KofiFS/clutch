@@ -91,6 +91,10 @@ jobs:
           for f in "Clutch-Setup-${tag#v}.exe" latest.yml; do
             gh release view "$tag" --json assets --jq '.assets[].name' | grep -qx "$f" || { echo "missing $f in release"; exit 1; }
           done
+          # A copy with a fixed name, so "releases/latest/download/Clutch-Setup.exe" (the README's
+          # download button) always gets the newest installer. Updates use the versioned file.
+          cp "release/Clutch-Setup-${tag#v}.exe" release/Clutch-Setup.exe
+          gh release upload "$tag" release/Clutch-Setup.exe --clobber
           gh release edit "$tag" --draft=false --latest
 
       - uses: actions/upload-artifact@v7
