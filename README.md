@@ -119,6 +119,26 @@ server/          optional cloud server (Node; only dependency is the Anthropic S
 scripts/         icon import, FFmpeg fetch
 ```
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- **Builds:** signed installers are built only by GitHub Actions from this repository's source,
+  from a `v*` release tag. Nothing built on a personal machine is signed.
+- **Approvers:** every release signing request is approved by the maintainer,
+  [@KofiFS](https://github.com/KofiFS).
+- **Committers and reviewers:** changes from contributors are reviewed and merged by the maintainer.
+
+### Privacy
+
+Clutch records and stores clips on your PC only. It sends data over the network only for features
+you turn on yourself: Discord posting (to your webhook), YouTube uploads, cloud share links and
+sign-in, AI features (screenshots of gameplay to the Anthropic API, through your own key or a
+Clutch account) and update checks against this repository's GitHub releases. Sponsored cards, if
+you leave them on, are fetched from the Clutch cloud server and a click on one is counted; neither
+request carries an account or device ID. There is no telemetry and no tracking.
+
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
