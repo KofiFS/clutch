@@ -133,11 +133,22 @@ function showWindow(page?: string) {
   if (page) send('navigate', page)
 }
 
-/** Windows login item; only meaningful for the installed app (dev runs would register bare electron.exe). */
+/**
+ * Windows login item. The installed app registers itself; a dev copy registers electron.exe with
+ * the project folder, so it starts the last build. A fixed name, so there is only ever one entry
+ * and the uninstaller can find it (build/installer.nsh).
+ */
+function loginItem(): Electron.Settings {
+  return app.isPackaged
+    ? { args: ['--hidden'], name: 'Clutch' }
+    : { path: process.execPath, args: [app.getAppPath(), '--hidden'], name: 'Clutch' }
+}
+function launchAtLoginIsOn(): boolean {
+  return app.getLoginItemSettings(loginItem() as Electron.LoginItemSettingsOptions).openAtLogin
+}
 function applyLaunchAtLogin(on: boolean) {
-  if (!app.isPackaged || process.platform !== 'win32') return
-  // A fixed name, so the uninstaller can find and remove it (build/installer.nsh).
-  app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'], name: 'Clutch' })
+  if (process.platform !== 'win32') return
+  app.setLoginItemSettings({ ...loginItem(), openAtLogin: on })
 }
 
 function send(channel: string, payload: unknown) {
@@ -313,10 +324,12 @@ app.whenReady().then(async () => {
   scheduler.on('change', () => send('uploads-changed', null))
   scheduler.on('log', (m) => recorder.log('upload', m))
   scheduler.on('done', ({ clip, upload }) => send('upload-done', { clipId: clip.id, url: upload.url, title: clip.title }))
+  // Keep the Windows startup entry matching the setting (and pointing at this copy).
+  if (process.platform === 'win32' && settings.get().app.launchAtLogin) applyLaunchAtLogin(true)
   settings.onChange((s) => {
     if (hotkeySig(s) !== hotkeySignature) registerHotkey(s)
     tray?.refresh()
-    if (app.isPackaged && app.getLoginItemSettings({ args: ['--hidden'], name: 'Clutch' } as Electron.LoginItemSettingsOptions).openAtLogin !== s.app.launchAtLogin) applyLaunchAtLogin(s.app.launchAtLogin)
+    if (process.platform === 'win32' && launchAtLoginIsOn() !== s.app.launchAtLogin) applyLaunchAtLogin(s.app.launchAtLogin)
     // Keep the window in sync with changes made by the main process (YouTube connect, tray, etc.).
     send('settings-changed', s)
     mini?.send('settings-changed', s)
@@ -524,7 +537,7 @@ app.whenReady().then(async () => {
     if (!wasActive && recorder.status.running) shrinkToWidget()
   })
   ipcMain.handle('bookmark:add', () => recorder.bookmark())
-  ipcMain.handle('system:canLaunchAtLogin', () => app.isPackaged && process.platform === 'win32')
+  ipcMain.handle('system:canLaunchAtLogin', () => process.platform === 'win32')
   ipcMain.handle('activity:list', () => recorder.activity)
   ipcMain.on('audio:push', (_e, pcm: ArrayBuffer, levelDb: number) => recorder.pushSystemAudio(Buffer.from(pcm), levelDb))
 

@@ -414,7 +414,7 @@ function StartWithWindows() {
       checked={settings.app.launchAtLogin}
       onChange={(launchAtLogin) => void save({ app: { ...settings.app, launchAtLogin } })}
       label="Start with Windows"
-      hint={available === false ? 'Takes effect in the installed app (npm run dist). Saved for then.' : 'Opens hidden in the tray when you sign in, like Medal, so it is ready before your first game.'}
+      hint={available === false ? 'Only available on Windows.' : 'Opens hidden in the tray when you sign in, like Medal, so it is ready before your first game.'}
     />
   )
 }
