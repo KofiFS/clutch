@@ -1,10 +1,10 @@
 {
   "name": "clutch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Clutch - a smart game clip recorder: tell it what to clip, pick quality, share to Discord and YouTube.",
   "main": "./out/main/index.js",
   "author": {
-    "name": "KofiFS"
+    "name": "Shangko Studio"
   },
   "private": true,
   "scripts": {
@@ -40,7 +40,8 @@
     "vite": "^6.3.0"
   },
   "build": {
-    "appId": "com.kofifs.clutch",
+    "appId": "com.shangkostudio.clutch",
+    "copyright": "Copyright © 2026 Shangko Studio",
     "productName": "Clutch",
     "directories": {
       "output": "release",
@@ -98,7 +99,7 @@
       "provider": "github",
       "owner": "KofiFS",
       "repo": "clutch",
-      "releaseType": "release"
+      "releaseType": "draft"
     }
   },
   "productName": "Clutch",

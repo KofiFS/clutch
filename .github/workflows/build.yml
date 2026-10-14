@@ -13,9 +13,9 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -55,7 +55,19 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
       # Tags (v0.2.0 ...) publish a GitHub release with latest.yml: that's what auto-update reads.
-      - name: Build and publish release
+      # electron-builder uploads files in parallel and each upload tries to create a missing release,
+      # which fails with "already_exists". Create it first as a draft (auto-update ignores drafts),
+      # upload into it, and only publish once every file is there.
+      - name: Create draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --verify-tag --draft --title "Clutch ${tag#v}" --generate-notes
+
+      - name: Build and upload release files
         if: startsWith(github.ref, 'refs/tags/v')
         run: npm run release
         env:
@@ -69,7 +81,19 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
-      - uses: actions/upload-artifact@v4
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          for f in "Clutch-Setup-${tag#v}.exe" latest.yml; do
+            gh release view "$tag" --json assets --jq '.assets[].name' | grep -qx "$f" || { echo "missing $f in release"; exit 1; }
+          done
+          gh release edit "$tag" --draft=false --latest
+
+      - uses: actions/upload-artifact@v7
         with:
           name: Clutch-Setup
           path: release/*.exe

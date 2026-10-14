@@ -27,7 +27,7 @@ import { UploadScheduler, type EnqueueOptions } from './upload/scheduler'
 // stores absolute paths, so keep the original data folder instead of moving it.
 app.setName('Clutch')
 app.setPath('userData', path.join(app.getPath('appData'), 'clipforge'))
-if (process.platform === 'win32') app.setAppUserModelId('com.kofifs.clutch')
+if (process.platform === 'win32') app.setAppUserModelId('com.shangkostudio.clutch')
 
 // Serve local clip files and thumbnails to the renderer through a dedicated scheme.
 protocol.registerSchemesAsPrivileged([{ scheme: 'cf', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true } }])
