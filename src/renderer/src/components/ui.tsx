@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 
 export function Field({ label, hint, children, right }: { label: string; hint?: string; children: ReactNode; right?: ReactNode }) {
@@ -65,20 +65,35 @@ export function Slider({ value, min, max, step = 1, onChange, format, label, hin
 }
 
 export function Segmented<T extends string | number>({ value, options, onChange, ariaLabel }: { value: T; options: { value: T; label: ReactNode; title?: string }[]; onChange: (v: T) => void; ariaLabel?: string }) {
-  const idx = Math.max(0, options.findIndex((o) => o.value === value))
+  const idx = options.findIndex((o) => o.value === value)
+  const box = useRef<HTMLDivElement>(null)
+  // The pill sits exactly behind the selected button. Options differ in width ("Default" vs "60"),
+  // so it is measured, not computed from the option count.
+  const [pill, setPill] = useState<{ left: number; width: number } | null>(null)
+  const [animate, setAnimate] = useState(false)
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    const measure = () => {
+      const btn = el.querySelectorAll<HTMLButtonElement>('button[role=radio]')[idx]
+      setPill(btn ? { left: btn.offsetLeft, width: btn.offsetWidth } : null)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [idx, options.length])
+  // No slide on first paint, only when the choice changes.
+  useEffect(() => { const t = setTimeout(() => setAnimate(true), 50); return () => clearTimeout(t) }, [])
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="relative inline-flex p-1 rounded-[12px] w-full bg-[#1a1a1f]">
-      {/* Sliding glass lens behind the selected option */}
-      <span
-        aria-hidden
-        className="absolute top-1 bottom-1 rounded-[9px] transition-all duration-200"
-        style={{
-          left: `calc(${(idx / options.length) * 100}% + 4px)`,
-          width: `calc(${100 / options.length}% - 8px)`,
-          background: '#34343b',
-          transitionTimingFunction: 'var(--ease-out)'
-        }}
-      />
+    <div ref={box} role="radiogroup" aria-label={ariaLabel} className="relative flex gap-1 p-1 rounded-[12px] w-full bg-[#1a1a1f]">
+      {pill && (
+        <span
+          aria-hidden
+          className={`absolute top-1 bottom-1 rounded-[9px] bg-[#34343b] ${animate ? 'transition-[left,width] duration-200' : ''}`}
+          style={{ left: pill.left, width: pill.width, transitionTimingFunction: 'var(--ease-out)' }}
+        />
+      )}
       {options.map((o) => (
         <button
           key={String(o.value)}
@@ -86,7 +101,7 @@ export function Segmented<T extends string | number>({ value, options, onChange,
           aria-checked={value === o.value}
           title={o.title}
           onClick={() => onChange(o.value)}
-          className={`relative z-10 flex-1 h-8 px-3 rounded-[9px] text-sm font-medium transition-colors duration-200 ${value === o.value ? 'text-ink' : 'text-ink-3 hover:text-ink-2'}`}
+          className={`relative z-10 flex-1 h-8 px-2 rounded-[9px] text-sm font-medium whitespace-nowrap transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-accent ${value === o.value ? 'text-ink' : 'text-ink-3 hover:text-ink-2 hover:bg-white/[0.04]'}`}
         >
           {o.label}
         </button>

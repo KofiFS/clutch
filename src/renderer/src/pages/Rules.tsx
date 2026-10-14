@@ -192,7 +192,7 @@ function Profiles() {
                 </div>
                 <button className="btn-ghost text-ink-3 hover:text-bad h-9 w-9 px-0" onClick={() => setProfile(key, null)} aria-label="Remove profile"><Trash2 size={15} /></button>
               </div>
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 min-[1400px]:grid-cols-4 gap-x-6 gap-y-4">
                 <Field label="Frame rate">
                   <Segmented value={p.fps ?? 0} onChange={(fps) => set({ fps: fps === 0 ? undefined : (fps as 30 | 60 | 120 | 144) })} options={[{ value: 0, label: 'Default' }, { value: 60, label: '60' }, { value: 120, label: '120' }, { value: 144, label: '144' }]} />
                 </Field>

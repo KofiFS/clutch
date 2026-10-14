@@ -41,13 +41,14 @@ function StatusStrip() {
   const state = paused ? 'Paused · nothing is being recorded' : long ? `Long recording ${hms}` : status.running ? `Recording${game?.isGame ? ` · ${game.name}` : ''}` : status.starting ? 'Starting…' : 'Waiting for game'
   const Key = ({ k, label, onClick, active }: { k: string; label: string; onClick?: () => void; active?: boolean }) =>
     k ? (
-      <button onClick={onClick} className={`no-drag flex items-center gap-1.5 h-7 px-2 rounded-full text-[12px] transition-colors ${active ? 'text-ink bg-white/10' : 'text-ink-2 hover:text-ink hover:bg-white/[0.07]'}`}>
+      <button onClick={onClick} title={`${label} (${k})`} className={`no-drag shrink-0 flex items-center gap-1.5 h-7 px-2 rounded-full text-[12px] whitespace-nowrap transition-colors ${active ? 'text-ink bg-white/10' : 'text-ink-2 hover:text-ink hover:bg-white/[0.07]'}`}>
         {k.split('+').map((p) => <kbd key={p} className="kbd h-5 min-w-5 text-[9px]">{p}</kbd>)}
-        <span>{label}</span>
+        {/* Narrow windows keep just the keys; the label stays in the tooltip. */}
+        <span className={label.length > 6 ? 'max-[1180px]:hidden' : ''}>{label}</span>
       </button>
     ) : null
   return (
-    <div className="flex items-center gap-1 ml-6 min-w-0">
+    <div className="flex items-center gap-1 ml-6 shrink-0">
       <span className={`flex items-center gap-2 h-7 px-3 rounded-full text-[12px] font-medium shrink-0 ${paused ? 'text-warn bg-warn/10' : long ? 'text-[#ff8aa1] bg-[#ff3b5c]/12' : status.running ? 'text-live bg-live/10' : 'text-ink-2 bg-white/[0.05]'}`}>
         <span className={`w-1.5 h-1.5 rounded-full ${paused ? 'bg-warn' : long ? 'bg-[#ff3b5c]' : status.running ? 'bg-live' : 'bg-ink-3'}`} />
         <span className="tabular">{state}</span>
@@ -72,7 +73,7 @@ function TitleBar({ live, onSearch }: { live: boolean; onSearch: () => void }) {
       {live && <span className="sr-only">Recording</span>}
       <button
         onClick={onSearch}
-        className="no-drag ml-auto mr-[150px] flex items-center gap-2.5 h-9 w-[380px] max-w-[34vw] px-3.5 rounded-full text-[13px] text-ink-3 hover:text-ink-2 border border-white/15 hover:border-white/30 transition-colors"
+        className="no-drag ml-auto mr-[150px] shrink min-w-[150px] flex items-center gap-2.5 h-9 w-[380px] max-w-[34vw] px-3.5 rounded-full text-[13px] text-ink-3 hover:text-ink-2 border border-white/15 hover:border-white/30 transition-colors"
         aria-label="Search (Ctrl+K)"
       >
         <Search size={15} />
