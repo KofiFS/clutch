@@ -68,8 +68,9 @@ Use this if SignPath says no, or if you want "Clutch" or your own name shown as 
 
 ## 2. Releases and auto-update
 
-1. Push the repo to `github.com/KofiFS/clutch` (switch the commit email to your GitHub
-   noreply address first if you don't want your Gmail public).
+1. Create the public repo and push: `gh repo create KofiFS/clutch --public --source . --remote origin --push`.
+   Commits already use your GitHub noreply address, and the branch is `main` (the release workflow
+   only runs on `main` and `v*` tags).
 2. Bump `version` in `package.json`, commit, then tag and push: `git tag v0.2.0 && git push --tags`.
    GitHub Actions builds, signs and publishes the release; installed copies update themselves.
 
