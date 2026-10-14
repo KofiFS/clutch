@@ -5,8 +5,8 @@
 !macro customUnInstall
   ${ifNot} ${isUpdated}
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Clutch"
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.iceko.clutch"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.kofifs.clutch"
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "Clutch"
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "com.iceko.clutch"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "com.kofifs.clutch"
   ${endIf}
 !macroend

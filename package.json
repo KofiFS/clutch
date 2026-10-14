@@ -4,7 +4,7 @@
   "description": "Clutch - a smart game clip recorder: tell it what to clip, pick quality, share to Discord and YouTube.",
   "main": "./out/main/index.js",
   "author": {
-    "name": "iceko"
+    "name": "KofiFS"
   },
   "private": true,
   "scripts": {
@@ -40,7 +40,7 @@
     "vite": "^6.3.0"
   },
   "build": {
-    "appId": "com.iceko.clutch",
+    "appId": "com.kofifs.clutch",
     "productName": "Clutch",
     "directories": {
       "output": "release",
