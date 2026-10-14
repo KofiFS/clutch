@@ -164,9 +164,9 @@ const SYSTEM_PROCS = new Set([
 ])
 
 /** Processes that are never games even if they go fullscreen. */
-const NOT_GAMES = /^(chrome|msedge|firefox|opera|brave|discord|spotify|code|cursor|obs64|obs|vlc|potplayer(mini)?64|mpc-hc64|explorer|steam|steamwebhelper|epicgameslauncher|battle\.net|riotclientservices|unrealeditor|blender|photoshop|premiere pro|capcut|devenv|notepad\+\+|wordpad|winword|excel|powerpnt|teams|slack|zoom|medal|nvidia app|nzxt cam|sysmon|claude|chatgpt|notion|obsidian|figma|whatsapp|telegram|outlook|olk|msedgewebview2|windowsterminal|powershell|cmd|screenclippinghost|snippingtool|sharex|lightshot|gamebar|gamebarftserver|xboxpcappft|nvcontainer|nvidia overlay|rtss|msiafterburner)$/i
+const NOT_GAMES = /^(chrome|msedge|firefox|opera|brave|discord|spotify|code|cursor|obs64|obs|vlc|potplayer(mini)?64|mpc-hc64|explorer|steam|steamwebhelper|epicgameslauncher|battle\.net|riotclientservices|unrealeditor|blender|photoshop|premiere pro|capcut|devenv|notepad\+\+|wordpad|winword|excel|powerpnt|teams|slack|zoom|medal|nvidia app|nzxt cam|sysmon|claude|chatgpt|notion|obsidian|figma|whatsapp|telegram|outlook|olk|msedgewebview2|windowsterminal|powershell|cmd|screenclippinghost|snippingtool|sharex|lightshot|gamebar|gamebarftserver|xboxpcappft|nvcontainer|nvidia overlay|rtss|msiafterburner|phoneexperiencehost|yourphone|crossdeviceservice|calculatorapp|photos|microsoft\.media\.player|windowscamera|xboxpcapp|xboxapp|gamingservices|msteams|ms-teams|onedrive|searchhost|startmenuexperiencehost|shellexperiencehost|textinputhost|lockapp|widgets|widgetservice|systemsettings|applicationframehost)$/i
 
-const GAME_PATH_HINTS = /steamapps|\\epic ?games\\|\\riot games\\|\\xboxgames\\|\\gog galaxy\\|\\gog games\\|\\battle\.net\\|\\ubisoft\\|\\ea games\\|\\origin games\\|\\games\\|\\minecraft|\\windowsapps\\/i
+const GAME_PATH_HINTS = /steamapps|\\epic ?games\\|\\riot games\\|\\xboxgames\\|\\gog galaxy\\|\\gog games\\|\\battle\.net\\|\\ubisoft\\|\\ea games\\|\\origin games\\|\\games\\|\\minecraft/i
 
 export function isSystemProcess(process: string) {
   return SYSTEM_PROCS.has(process.toLowerCase())

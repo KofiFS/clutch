@@ -110,7 +110,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     })
     this.hype.on('hype', ({ at, peakDb, source }) => {
       this.lastLoudAt = Date.now()
-      if (!this.status.running) return
+      if (!this.status.running || !this.autoClipAllowed()) return
       this.log('hype', `Hype spike on ${source === 'mic' ? 'your mic' : 'voice chat'} (${Math.round(peakDb)} dB)`)
       const c = this.effectiveCapture()
       void this.clipRange(at - c.preSeconds * 1000, at + Math.max(4, c.postSeconds) * 1000, 'hype', { event: source === 'mic' ? 'Hype moment' : 'Voice chat went off', hypeDb: peakDb })
@@ -123,7 +123,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.pushStatus()
     })
     this.voice.on('talk', (seg) => {
-      if (!this.settings.get().voice.enabled) return
+      if (!this.settings.get().voice.enabled || !this.autoClipAllowed()) return
       void this.clipRange(seg.startMs - 2000, seg.endMs + 1000, 'voice', { event: seg.source === 'mic' ? 'You talking' : 'Voice chat' })
     })
 
@@ -653,6 +653,15 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     return { seconds: next, edge: next === opts[opts.length - 1] && dir > 0 ? 'max' : next === opts[0] && dir < 0 ? 'min' : null }
   }
 
+  /**
+   * Automatic triggers (hype, voice, AI) only clip while a game is being recorded, like Medal.
+   * Recording the desktop on purpose still works with the hotkey; it just doesn't clip by itself
+   * whenever you talk or a video plays.
+   */
+  private autoClipAllowed(): boolean {
+    return !!(this.game.isGame || this.stickyGame || this.long?.game.isGame)
+  }
+
   async clipRange(startMs: number, endMs: number, trigger: TriggerSource, meta: { event?: string; title?: string; hypeDb?: number } = {}) {
     if (!this.buffer.running && !this.paused) {
       this.log('error', 'Cannot clip: recording is not running')
@@ -746,7 +755,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
   private async onSnapshot(jpeg: Buffer) {
     const s = this.settings.get()
-    if (!s.vision.enabled || !this.vision.ready || this.status.recordingBlocked) return
+    if (!s.vision.enabled || !this.vision.ready || this.status.recordingBlocked || !this.autoClipAllowed()) return
     if (Date.now() - this.lastVisionClipAt < VISION_COOLDOWN_MS) { this.vision.remember(jpeg); this.frameChange(jpeg); return }
     // Cheap checks first: only ask the AI when the screen changed a lot or the audio got loud.
     // Menus, walking around and lobbies cost nothing.
