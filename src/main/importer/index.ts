@@ -157,7 +157,7 @@ export function readObs(): ImportedSettings | null {
 // ---------------------------------------------------------------- shared
 
 /**
- * OCR can blur a letter or two in a path ("C:\Users\iceko" read as "C:\Users\lceko"). Walk the
+ * OCR can blur a letter or two in a path ("C:\Users\alex" read as "C:\Users\a1ex"). Walk the
  * path and snap each part to the closest real folder, so a screenshot from this PC just works.
  */
 export function fixFolder(p: string): string {
