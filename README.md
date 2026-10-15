@@ -11,6 +11,11 @@ Free and open source for Windows. Lightweight like NVIDIA's recorder, social lik
 </p>
 <p align="center"><sub>Windows 10 and 11 · free · <a href="../../releases">all versions</a></sub></p>
 
+<p align="center">
+  <a href="docs/media/clutch-demo.mp4"><img src="docs/media/clutch-demo.webp" width="800" alt="A one-minute tour of Clutch: clips sorted by game, the player and 9:16 editor, sharing, selecting many clips, Medal clips in the same library, plain-English clip rules, setup and search"></a>
+  <br><sub>One-minute tour · <a href="docs/media/clutch-demo.mp4">watch in full quality</a></sub>
+</p>
+
 ---
 
 ## Features
@@ -32,6 +37,8 @@ Free and open source for Windows. Lightweight like NVIDIA's recorder, social lik
 
 **Library and sharing**
 - Library with game strip, hover previews, search, favorites, tags, multi-select, trash with undo.
+- **Bring your Medal library** (or OBS, NVIDIA, any folder): your old clips show up next to Clutch's, read where they are. Nothing is copied, moved or deleted.
+- **Editor:** 9:16 / 1:1 / 16:9 crops for Shorts and TikTok, speed, volume, captions, and joining clips.
 - Viewer with drag-to-scrub timeline, trim handles, bookmarks and keyboard shortcuts.
 - **Discord** posting through a webhook, with automatic Discord-sized copies that play inline.
 - **YouTube** uploads, now or scheduled, plus an auto-upload schedule.
@@ -39,8 +46,9 @@ Free and open source for Windows. Lightweight like NVIDIA's recorder, social lik
 - **Universal search** (Ctrl+K) for settings, clips, games and actions.
 
 **Desktop**
-- Liquid-glass interface with a light HUD style, optional Windows 11 acrylic window, Lite mode for older GPUs.
-- Lives in the system tray, starts with Windows, shows an on-screen "Clipped!" popup.
+- Clean, flat interface with a guided **setup checklist**; every "set this up" hint jumps straight to the setting.
+- Lives in the system tray, starts with Windows, shows an on-screen "Clipped!" popup and a corner mini controller.
+- **Updates itself** from GitHub releases (or click **Check for updates**), never restarting in the middle of a game.
 
 ## Install
 
