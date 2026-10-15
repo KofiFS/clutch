@@ -65,7 +65,8 @@
           "icon*.png",
           "icon.ico",
           "ocr.ps1",
-          "app-audio.ps1"
+          "app-audio.ps1",
+          "voice-commands.ps1"
         ]
       },
       {

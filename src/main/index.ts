@@ -325,6 +325,7 @@ app.whenReady().then(async () => {
   recorder.on('game', (g) => { send('game', g); tray?.refresh() })
   recorder.on('notice', (n) => overlay?.show(n.title, n.sub, n.kind, 2200))
   recorder.library.on('change', () => send('library-changed', null))
+  recorder.voiceCommands.on('heard', (h) => send('voice-heard', h))
   // Other clip libraries (Medal, any folder), read in place.
   sources = new LibrarySources(recorder.library, settings, () => settings.get().capture.outputDir)
   sources.on('change', (list) => send('libraries', list))
@@ -554,6 +555,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('library:query', (_e, q: LibraryQuery) => recorder.library.query(q))
   ipcMain.handle('libraries:list', () => sources.list())
+  ipcMain.handle('voice:test', (_e, seconds?: number) => recorder.testVoiceCommands(seconds))
   ipcMain.handle('libraries:detectMedal', async () => {
     const dir = await detectMedal()
     if (!dir) return null

@@ -6,6 +6,7 @@ import { fileUrl, useStore } from '../lib/store'
 import { Badge, Field, GameIcon, Section, Segmented, Slider, Toggle } from '../components/ui'
 import { LiveMeter } from '../components/AudioSources'
 import { GamePicker } from '../components/GamePicker'
+import { VoiceCommandsSettings } from '../components/VoiceCommandsSettings'
 
 const PRESETS = [
   { name: 'Shooter kills', text: 'Clip every kill, headshot, multi-kill and clutch I get. Also clip when I die in a funny or embarrassing way. Never clip menus, loading screens, the scoreboard or buy phase.' },
@@ -33,6 +34,8 @@ export default function Rules() {
         <h1 className="text-2xl font-semibold tracking-tight">What to clip</h1>
         <p className="text-ink-3 text-sm mt-1">Your hotkey always works. On top of it, these triggers clip for you. The first two run entirely on your PC with no AI and almost no CPU.</p>
       </header>
+
+      <VoiceCommandsSettings />
 
       <Section
         title="Hype moments"

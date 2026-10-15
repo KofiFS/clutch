@@ -11,6 +11,7 @@ import { Library } from './library'
 import type { SettingsStore } from './settings'
 import { VisionJudge, type CloudJudge } from './triggers/vision'
 import { VoiceDetector } from './triggers/voice'
+import { VoiceCommands } from './capture/voiceCommands'
 import { HypeDetector } from './triggers/hype'
 import { suggestTitle } from './triggers/titler'
 import { enforceStorage, freeBytes } from './library/janitor'
@@ -40,6 +41,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   readonly buffer: ReplayBuffer
   readonly library: Library
   readonly voice: VoiceDetector
+  /** "Clip that": spoken commands, listening only while recording. */
+  readonly voiceCommands = new VoiceCommands()
+  private voiceTestUntil = 0
   readonly hype: HypeDetector
   private vision: VisionJudge
   status: BufferStatus = { running: false }
@@ -98,7 +102,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
         since: st.running ? this.status.since ?? new Date().toISOString() : this.paused ? this.status.since : undefined
       }
       if (st.error) this.log('error', st.error)
-      if (!st.running) { this.voice.stop(); this.status.talking = false; this.activeCapture = null }
+      if (!st.running) { this.voice.stop(); this.status.talking = false; this.activeCapture = null; if (!this.paused) this.applyVoiceCommands() }
       this.pushStatus()
     })
     this.buffer.on('levels', ({ micDb, sources }) => {
@@ -129,6 +133,23 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
     let lastAudio = JSON.stringify(settings.get().capture.audioSources)
     let lastLists = JSON.stringify([settings.get().extraGames, settings.get().allowlist, settings.get().blocklist])
+    // Spoken commands run the same actions as the hotkeys.
+    this.voiceCommands.on('command', ({ action, phrase }) => {
+      if (action === 'clip') {
+        if (!this.status.running && !this.paused) return
+        this.log('clip', `Heard "${phrase}"`)
+        const c = this.effectiveCapture()
+        const now = this.paused ? this.paused.at : Date.now()
+        void this.clipRange(now - Math.min(c.preSeconds, c.bufferSeconds) * 1000, this.paused ? now : now + c.postSeconds * 1000, 'hotkey', { event: `Said "${phrase}"` })
+      } else if (action === 'bookmark') this.bookmark()
+      else void this.toggleLong()
+    })
+    this.voiceCommands.on('error', (m) => this.log('info', `Voice commands: ${m}`))
+    let lastVoiceCmd = JSON.stringify([settings.get().voiceCommands, settings.get().capture.audioSources, settings.get().capture.micDevice])
+    settings.onChange((s) => {
+      const v = JSON.stringify([s.voiceCommands, s.capture.audioSources, s.capture.micDevice])
+      if (v !== lastVoiceCmd) { lastVoiceCmd = v; this.applyVoiceCommands() }
+    })
     settings.onChange((s) => {
       // The game lists changed: forget the remembered game only if it no longer counts as a game.
       const lists = JSON.stringify([s.extraGames, s.allowlist, s.blocklist])
@@ -247,6 +268,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.activeCapture = capture
       this.autoStarted = reason === 'auto'
       this.voice.start()
+      this.applyVoiceCommands()
       this.hype.reset()
       this.vision.reset()
       const profileNote = s.profiles[this.game.process] ? ` using the ${s.profiles[this.game.process].name} profile` : ''
@@ -360,6 +382,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     await this.buffer.stop()
     if (wasPaused) { this.status.since = undefined; this.pushStatus() }
     this.voice.stop()
+    this.applyVoiceCommands()
     this.autoStarted = false
     this.log('info', reason === 'auto' ? 'Recording stopped - no game open' : 'Recording stopped')
   }
@@ -529,6 +552,30 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     if (this.lastApp?.process === p) this.lastApp = { ...this.lastApp, isGame: true }
     this.log('game', `${this.lastApp?.process === p ? this.lastApp.name : p} will be treated as a game`)
     void this.pollGame()
+  }
+
+  /** The mic voice commands listen to: the first enabled mic source. */
+  private commandMic(): string | undefined {
+    const c = this.settings.get().capture
+    return (c.audioSources ?? []).find((a) => a.kind === 'mic' && a.enabled && a.device)?.device ?? (c.micDevice || undefined)
+  }
+
+  /** Listen for spoken commands while recording (or during a test), otherwise not at all. */
+  applyVoiceCommands() {
+    if (Date.now() < this.voiceTestUntil) return
+    const s = this.settings.get()
+    const live = this.status.running || !!this.paused
+    if (s.voiceCommands?.enabled && live) this.voiceCommands.start(s.voiceCommands, this.commandMic())
+    else this.voiceCommands.stop()
+  }
+
+  /** "Try it": show what the recognizer hears for a few seconds, without running commands. */
+  testVoiceCommands(seconds = 15) {
+    const s = this.settings.get()
+    this.voiceTestUntil = Date.now() + seconds * 1000
+    this.voiceCommands.start(s.voiceCommands, this.commandMic(), { test: true })
+    setTimeout(() => { this.voiceTestUntil = 0; this.voiceCommands.stop(); this.applyVoiceCommands() }, seconds * 1000)
+    return { seconds, mic: this.commandMic() ?? null, unavailable: this.voiceCommands.unavailable }
   }
 
   async clipNow(trigger: TriggerSource = 'hotkey', seconds?: number) {

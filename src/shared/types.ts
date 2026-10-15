@@ -231,6 +231,15 @@ export function cleanGameName(name: string): string {
   return n || name.trim()
 }
 
+export type VoiceCommandAction = 'clip' | 'bookmark' | 'long'
+
+export interface VoiceCommandSettings {
+  enabled: boolean
+  /** 0..1: how sure the recognizer must be. Higher = fewer accidental clips, may miss mumbles. */
+  minConfidence: number
+  commands: { phrase: string; action: VoiceCommandAction }[]
+}
+
 /** Self-update status (installed app, from GitHub Releases). */
 export interface UpdateState {
   phase: 'idle' | 'unsupported' | 'checking' | 'downloading' | 'up-to-date' | 'ready' | 'error'
@@ -307,6 +316,8 @@ export interface Settings {
   capture: CaptureSettings
   vision: VisionRules
   voice: VoiceRules
+  /** Spoken commands like "clip that" (offline, Windows speech recognition). */
+  voiceCommands: VoiceCommandSettings
   upload: UploadSettings
   cloud: CloudSettings
   discord: DiscordSettings
@@ -507,6 +518,14 @@ export const DEFAULT_SETTINGS: Settings = {
     minConfidence: 0.7,
     model: 'claude-haiku-5-5',
     maxPerMinute: 6
+  },
+  voiceCommands: {
+    enabled: true,
+    minConfidence: 0.55,
+    commands: [
+      { phrase: 'clip that', action: 'clip' },
+      { phrase: 'bookmark that', action: 'bookmark' }
+    ]
   },
   voice: {
     enabled: false,

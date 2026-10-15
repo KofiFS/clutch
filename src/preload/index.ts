@@ -21,7 +21,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress' | 'shrink-progress' | 'libraries'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress' | 'shrink-progress' | 'libraries' | 'voice-heard'
 
 const api = {
   settings: {
@@ -109,6 +109,9 @@ const api = {
   },
   activity: { list: (): Promise<ActivityEvent[]> => ipcRenderer.invoke('activity:list') },
   audio: { push: (pcm: ArrayBuffer, levelDb: number) => ipcRenderer.send('audio:push', pcm, levelDb) },
+  voiceCommands: {
+    test: (seconds?: number): Promise<{ seconds: number; mic: string | null; unavailable: string | null }> => ipcRenderer.invoke('voice:test', seconds)
+  },
   libraries: {
     list: (): Promise<LibraryInfo[]> => ipcRenderer.invoke('libraries:list'),
     detectMedal: (): Promise<{ path: string; added: boolean } | null> => ipcRenderer.invoke('libraries:detectMedal'),

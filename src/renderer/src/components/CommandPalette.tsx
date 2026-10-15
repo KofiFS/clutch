@@ -41,6 +41,7 @@ const SETTINGS: { label: string; page: Page; find: string; keywords?: string }[]
   { label: 'Updates', page: 'settings', find: 'Updates', keywords: 'update version new check upgrade latest release' },
   { label: 'Setup checklist', page: 'settings', find: 'Setup', keywords: 'getting started connect finish onboarding what is left todo' },
   { label: 'Health check', page: 'settings', find: 'Health check', keywords: 'problems diagnose not working fix ffmpeg' },
+  { label: 'Voice commands ("clip that")', page: 'rules', find: 'Voice commands', keywords: 'say clip that speak voice command phrase speech hands free keyword' },
   { label: 'Hype moments', page: 'rules', find: 'Hype moments', keywords: 'shout laugh loud spike trigger' },
   { label: 'When people talk', page: 'rules', find: 'Only when people talk', keywords: 'voice chat talking trigger' },
   { label: 'Watch the screen (AI)', page: 'rules', find: 'Watch the screen for moments', keywords: 'kills goals ai vision rules' },
