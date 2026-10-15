@@ -459,7 +459,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   tidyStorage() {
     const rules = this.settings.get().storage
     if (!rules) return
-    const r = enforceStorage(this.library, rules)
+    const r = enforceStorage(this.library, rules, this.settings.get().capture.outputDir)
     if (!r.removed) return
     const mb = Math.round(r.freedBytes / 1024 ** 2)
     const freed = mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`

@@ -41,8 +41,9 @@ export class Compressor extends EventEmitter<{ progress: [ShrinkProgress] }> {
     const days = st.shrinkAfterDays ?? 1
     const since = st.shrinkSince ?? Date.now()
     const cutoff = Date.now() - Math.max(0, days) * 86400_000
-    return this.lib.all()
-      .filter((c) => !c.source && !c.shrunk && (c.sizeBytes || 0) > 5 * 1024 ** 2 && Date.parse(c.createdAt) <= cutoff && (all || Date.parse(c.createdAt) >= since))
+    // Only Clutch's own clips inside its clips folder are ever rewritten.
+    return this.lib.ownInside(this.settings().capture.outputDir)
+      .filter((c) => !c.trashedAt && !c.shrunk && (c.sizeBytes || 0) > 5 * 1024 ** 2 && Date.parse(c.createdAt) <= cutoff && (all || Date.parse(c.createdAt) >= since))
       .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
   }
 

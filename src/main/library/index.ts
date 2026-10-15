@@ -39,7 +39,15 @@ export interface AddMeta {
 export class Library extends EventEmitter<{ change: [] }> {
   private clips: Clip[] = []
   private indexFile: string
+  /**
+   * Other libraries' videos are kept in their own file, never in clips.json: an older Clutch that
+   * doesn't know about libraries reads clips.json as "my clips" and its storage rules would delete
+   * them (that happened to a Medal folder with 0.1.1).
+   */
+  private externalFile: string
   private hiddenFile: string
+  /** Folders whose files Clutch must never delete (other libraries), whatever the index says. */
+  private protectedRoots: string[] = []
   private thumbDir: string
   /** Files from other libraries the user removed from Clutch, so a rescan doesn't bring them back. */
   private hidden = new Set<string>()
@@ -48,6 +56,7 @@ export class Library extends EventEmitter<{ change: [] }> {
   constructor(private dataDir: string) {
     super()
     this.indexFile = path.join(dataDir, 'clips.json')
+    this.externalFile = path.join(dataDir, 'library-external.json')
     this.hiddenFile = path.join(dataDir, 'hidden-external.json')
     this.thumbDir = path.join(dataDir, 'thumbnails')
     fs.mkdirSync(this.thumbDir, { recursive: true })
@@ -56,6 +65,17 @@ export class Library extends EventEmitter<{ change: [] }> {
     } catch {
       this.clips = []
     }
+    let external: Clip[] = []
+    try { external = JSON.parse(fs.readFileSync(this.externalFile, 'utf8')) } catch { /* no other libraries yet */ }
+    // 0.1.2 kept other libraries' videos in clips.json: move them out so older versions can't see them.
+    const misplaced = this.clips.filter((c) => c.source)
+    if (misplaced.length) {
+      const known = new Set(external.map((c) => fileKey(c.file)))
+      external.push(...misplaced.filter((c) => !known.has(fileKey(c.file))))
+      this.clips = this.clips.filter((c) => !c.source)
+      this.writeFiles(external)
+    }
+    this.clips.push(...external.filter((c) => c.source))
     // Older clips may carry a raw window title as the game ("Rocket League (64-bit, DX11, Cooked)").
     let renamed = false
     for (const c of this.clips) { const g = cleanGameName(c.game); if (g !== c.game) { c.game = g; renamed = true } }
@@ -67,8 +87,26 @@ export class Library extends EventEmitter<{ change: [] }> {
 
   private save() {
     if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null }
-    fs.writeFileSync(this.indexFile, JSON.stringify(this.clips, null, 2))
+    this.writeFiles(this.clips.filter((c) => c.source))
     this.emit('change')
+  }
+
+  /** clips.json gets only Clutch's own clips; other libraries go to their own file. */
+  private writeFiles(external: Clip[]) {
+    fs.writeFileSync(this.indexFile, JSON.stringify(this.clips.filter((c) => !c.source), null, 2))
+    fs.writeFileSync(this.externalFile, JSON.stringify(external, null, 2))
+  }
+
+  /** Folders of other libraries: no file inside them is ever deleted, moved or overwritten. */
+  setProtectedRoots(roots: string[]) {
+    this.protectedRoots = roots.map((r) => fileKey(r).replace(/[\\/]+$/, '') + path.sep)
+  }
+
+  /** True when Clutch may delete this file: it's Clutch's own clip and not inside another library. */
+  private mayDelete(c: Clip): boolean {
+    if (c.source) return false
+    const f = fileKey(c.file)
+    return !this.protectedRoots.some((r) => f.startsWith(r))
   }
 
   /** Coalesce many saves (a library scan adds clips one by one). */
@@ -80,6 +118,15 @@ export class Library extends EventEmitter<{ change: [] }> {
   /** Clips recorded by Clutch itself (the only ones storage rules may delete or shrink). */
   own(): Clip[] {
     return this.clips.filter((c) => !c.source)
+  }
+
+  /**
+   * What storage rules may delete automatically: Clutch's own clips whose files are inside its
+   * clips folder (or that folder's trash). Anything elsewhere is left for the user to delete.
+   */
+  ownInside(dir: string): Clip[] {
+    const root = fileKey(dir).replace(/[\\/]+$/, '') + path.sep
+    return this.clips.filter((c) => this.mayDelete(c) && fileKey(c.file).startsWith(root))
   }
 
   /** Is this clip from another library (read in place, never deleted by Clutch)? */
@@ -269,7 +316,7 @@ export class Library extends EventEmitter<{ change: [] }> {
   trash(id: string): Clip | undefined {
     const c = this.get(id)
     if (!c || c.trashedAt) return
-    if (c.source) { this.remove(id); return c }
+    if (!this.mayDelete(c)) { this.remove(id); return c }
     const trashDir = path.join(path.dirname(path.dirname(c.file)), '.trash')
     try {
       fs.mkdirSync(trashDir, { recursive: true })
@@ -309,8 +356,8 @@ export class Library extends EventEmitter<{ change: [] }> {
     const c = this.get(id)
     if (!c) return
     this.clips = this.clips.filter((x) => x.id !== id)
-    if (c.source) {
-      this.hide(c)
+    if (!this.mayDelete(c)) {
+      if (c.source) this.hide(c)
       this.dropThumbs(c)
       this.save()
       return

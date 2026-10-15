@@ -49,7 +49,9 @@ export function freeBytes(dir: string): number | null {
  *  2. above `maxGB`, the trash is emptied first, then the oldest non-favorite clips go.
  * Long recordings count like any clip. Nothing a user starred is ever touched.
  */
-export function enforceStorage(lib: Library, rules: StorageRules, now = Date.now()): JanitorResult {
+export function enforceStorage(lib: Library, rules: StorageRules, ownDir: string, now = Date.now()): JanitorResult {
+  // Only clips Clutch recorded into its own folder are ever deleted automatically.
+  const pool = () => lib.ownInside(ownDir)
   const res: JanitorResult = { removed: 0, freedBytes: 0, reason: null }
   const drop = (c: Clip, reason: 'age' | 'size') => {
     res.removed++
@@ -60,16 +62,16 @@ export function enforceStorage(lib: Library, rules: StorageRules, now = Date.now
 
   if (rules.deleteAfterDays > 0) {
     const cutoff = now - rules.deleteAfterDays * 86400_000
-    for (const c of lib.own().filter((x) => !x.favorite && Date.parse(x.createdAt) < cutoff)) drop(c, 'age')
+    for (const c of pool().filter((x) => !x.favorite && Date.parse(x.createdAt) < cutoff)) drop(c, 'age')
   }
 
   if (rules.maxGB > 0) {
     const limit = rules.maxGB * GB
-    let used = lib.own().reduce((n, c) => n + (c.sizeBytes || 0), 0)
+    let used = pool().reduce((n, c) => n + (c.sizeBytes || 0), 0)
     if (used > limit) {
       // Trash first (oldest deletion first), then the oldest clips that aren't favorites.
-      const trash = lib.own().filter((c) => c.trashedAt).sort((a, b) => Date.parse(a.trashedAt!) - Date.parse(b.trashedAt!))
-      const live = lib.own().filter((c) => !c.trashedAt && !c.favorite).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+      const trash = pool().filter((c) => c.trashedAt).sort((a, b) => Date.parse(a.trashedAt!) - Date.parse(b.trashedAt!))
+      const live = pool().filter((c) => !c.trashedAt && !c.favorite).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
       for (const c of [...trash, ...live]) {
         if (used <= limit) break
         used -= c.sizeBytes || 0

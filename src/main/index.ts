@@ -328,6 +328,10 @@ app.whenReady().then(async () => {
   recorder.voiceCommands.on('heard', (h) => send('voice-heard', h))
   // Other clip libraries (Medal, any folder), read in place.
   sources = new LibrarySources(recorder.library, settings, () => settings.get().capture.outputDir)
+  // Files in other libraries' folders can never be deleted, whatever the index says.
+  const protect = () => recorder.library.setProtectedRoots((settings.get().libraries ?? []).map((l) => l.path))
+  protect()
+  settings.onChange(protect)
   sources.on('change', (list) => send('libraries', list))
   sources.on('log', (m) => recorder.log('info', m))
   setTimeout(() => sources.scanAll(), 45_000)
