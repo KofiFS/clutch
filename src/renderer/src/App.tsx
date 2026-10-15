@@ -8,6 +8,7 @@ import { ClipViewer } from './components/ClipViewer'
 import { Backdrop } from './components/Backdrop'
 import { CommandPalette } from './components/CommandPalette'
 import { ProDialog, SignInDialog } from './components/Account'
+import { HelpButton, UpdateButton } from './components/TopActions'
 import Dashboard from './pages/Dashboard'
 import Library from './pages/Library'
 import Rules from './pages/Rules'
@@ -73,13 +74,18 @@ function TitleBar({ live, onSearch }: { live: boolean; onSearch: () => void }) {
       {live && <span className="sr-only">Recording</span>}
       <button
         onClick={onSearch}
-        className="no-drag ml-auto mr-[150px] shrink min-w-[150px] flex items-center gap-2.5 h-9 w-[380px] max-w-[34vw] px-3.5 rounded-full text-[13px] text-ink-3 hover:text-ink-2 border border-white/15 hover:border-white/30 transition-colors"
+        className="no-drag ml-auto shrink min-w-[150px] flex items-center gap-2.5 h-9 w-[380px] max-w-[34vw] px-3.5 rounded-full text-[13px] text-ink-3 hover:text-ink-2 border border-white/15 hover:border-white/30 transition-colors"
         aria-label="Search (Ctrl+K)"
       >
         <Search size={15} />
         <span className="flex-1 text-left truncate">Search</span>
         <kbd className="kbd h-5 min-w-5 text-[10px]">Ctrl</kbd><kbd className="kbd h-5 min-w-5 text-[10px]">K</kbd>
       </button>
+      {/* Like Discord: update arrow (green when ready) and help, left of the window buttons. */}
+      <div className="flex items-center gap-0.5 mr-[150px] shrink-0">
+        <UpdateButton />
+        <HelpButton />
+      </div>
     </div>
   )
 }
