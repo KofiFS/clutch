@@ -61,6 +61,14 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   private lastGameSeenAt = 0
   private autoStarted = false
   private starting = false
+  /** When the last recording started and whether stop() ended it, to tell crashes from stops. */
+  private startedAt = 0
+  private stopping = false
+  /**
+   * Auto-start backoff: a recorder that keeps dying must not restart every few seconds (it
+   * flickers the widget and toasts over the game). 15 s, then 1 min, then 5 min with a notice.
+   */
+  private autoFail = { count: 0, until: 0, game: '' }
   private activeCapture: CaptureSettings | null = null
   private pendingRanges: { startMs: number; endMs: number }[] = []
   private long: { startMs: number; bookmarks: number[]; game: GameInfo; pauses: { from: number; to: number }[] } | null = null
@@ -102,6 +110,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
         since: st.running ? this.status.since ?? new Date().toISOString() : this.paused ? this.status.since : undefined
       }
       if (st.error) this.log('error', st.error)
+      // The recorder died on its own soon after starting: count it as a failed start.
+      if (!st.running && !this.stopping && !this.paused && this.startedAt && Date.now() - this.startedAt < 20_000) this.noteStartFailure(st.error)
+      if (st.running && this.startedAt && Date.now() - this.startedAt > 60_000 && this.autoFail.count) this.autoFail = { count: 0, until: 0, game: '' }
       if (!st.running) { this.voice.stop(); this.status.talking = false; this.activeCapture = null; if (!this.paused) this.applyVoiceCommands() }
       this.pushStatus()
     })
@@ -230,6 +241,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
   async start(reason: 'manual' | 'auto' = 'manual', opts: { resume?: { sinceMs: number } } = {}): Promise<boolean> {
     if (this.starting || this.status.running) return this.status.running
+    if (reason === 'manual') this.autoFail = { count: 0, until: 0, game: '' } // the user asked: always try
+    this.startedAt = Date.now()
+    this.stopping = false
     // Starting while paused is a resume.
     if (this.paused && !opts.resume) return this.resume()
     this.starting = true
@@ -278,6 +292,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       const msg = e instanceof Error ? e.message : String(e)
       this.status = { ...this.status, running: false, starting: false, lastError: msg }
       this.log('error', msg)
+      this.noteStartFailure(msg)
       this.pushStatus()
       return false
     } finally {
@@ -375,6 +390,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
   async stop(reason: 'manual' | 'auto' = 'manual') {
     if (!this.status.running && !this.buffer.running && !this.paused) return
+    this.stopping = true
     if (this.long) await this.stopLong()
     const wasPaused = !!this.paused
     this.paused = null
@@ -424,7 +440,8 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     this.status.recordingBlocked = blocked
 
     // Auto start / stop
-    if (s.app.autoStart === 'games' && info.isGame && !blocked && !this.status.running && !this.starting && !this.paused) {
+    if (this.autoFail.count && info.process !== this.autoFail.game) this.autoFail = { count: 0, until: 0, game: '' } // a different game gets a fresh try
+    if (s.app.autoStart === 'games' && info.isGame && !blocked && !this.status.running && !this.starting && !this.paused && Date.now() >= this.autoFail.until) {
       this.log('game', `Starting recording for ${info.name}`)
       if (await this.start('auto')) this.emit('autoStarted')
     } else if (this.autoStarted && (this.status.running || this.paused) && s.app.autoStopMinutes > 0 && Date.now() - this.lastGameSeenAt > s.app.autoStopMinutes * 60_000) {
@@ -552,6 +569,20 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     if (this.lastApp?.process === p) this.lastApp = { ...this.lastApp, isGame: true }
     this.log('game', `${this.lastApp?.process === p ? this.lastApp.name : p} will be treated as a game`)
     void this.pollGame()
+  }
+
+  /** A start that failed (or a recorder that died right away): back off before trying again. */
+  private noteStartFailure(error?: string) {
+    const game = this.game.isGame ? this.game.process : ''
+    if (game !== this.autoFail.game) this.autoFail = { count: 0, until: 0, game }
+    this.autoFail.count++
+    const wait = [15_000, 60_000, 5 * 60_000][Math.min(this.autoFail.count, 3) - 1]
+    this.autoFail.until = Date.now() + wait
+    if (this.autoFail.count === 3) {
+      const why = (error ?? this.status.lastError ?? 'the recorder stopped right after starting').split('\n')[0].slice(0, 160)
+      this.log('error', `Recording keeps failing${this.game.isGame ? ` in ${this.game.name}` : ''}: ${why}. Clutch will try again in 5 minutes; Start recording tries now.`)
+      this.emit('notice', { title: 'Clutch can\'t record right now', sub: 'Open Clutch to see why. It will try again in 5 minutes.', kind: 'info' })
+    }
   }
 
   /** The mic voice commands listen to: the first enabled mic source. */
