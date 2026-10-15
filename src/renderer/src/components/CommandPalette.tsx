@@ -37,6 +37,8 @@ const SETTINGS: { label: string; page: Page; find: string; keywords?: string }[]
   { label: 'AI / API key', page: 'settings', find: 'AI', keywords: 'anthropic claude key model auto title' },
   { label: 'Account & Clutch Pro', page: 'settings', find: 'Account', keywords: 'login sign in discord google cloud subscription pro plan billing' },
   { label: 'YouTube account', page: 'settings', find: 'Accounts', keywords: 'youtube connect google upload channel' },
+  { label: 'Libraries (Medal, other folders)', page: 'settings', find: 'Libraries', keywords: 'medal import clips folder obs nvidia shadowplay add library existing videos switch' },
+  { label: 'Updates', page: 'settings', find: 'Updates', keywords: 'update version new check upgrade latest release' },
   { label: 'Setup checklist', page: 'settings', find: 'Setup', keywords: 'getting started connect finish onboarding what is left todo' },
   { label: 'Health check', page: 'settings', find: 'Health check', keywords: 'problems diagnose not working fix ffmpeg' },
   { label: 'Hype moments', page: 'rules', find: 'Hype moments', keywords: 'shout laugh loud spike trigger' },

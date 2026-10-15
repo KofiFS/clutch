@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, EditOptions, GameInfo, ShrinkProgress, GameSummary, HealthItem, ImportChange, ImportResult, MonitorInfo, Platform, RunningApp, Settings, UploadRecord } from '../shared/types'
+import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, EditOptions, GameInfo, ShrinkProgress, GameSummary, HealthItem, ImportChange, ImportResult, MonitorInfo, LibraryInfo, Platform, RunningApp, Settings, UpdateState, UploadRecord } from '../shared/types'
 
 export interface LibraryQuery {
   text?: string
@@ -9,6 +9,8 @@ export interface LibraryQuery {
   tag?: string
   sort?: 'newest' | 'oldest' | 'longest' | 'largest'
   trashed?: boolean
+  /** 'clutch' = recorded by Clutch, otherwise a library id. */
+  source?: string
 }
 
 export interface EnqueueOpts {
@@ -19,7 +21,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress' | 'shrink-progress'
+type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress' | 'shrink-progress' | 'libraries'
 
 const api = {
   settings: {
@@ -80,7 +82,8 @@ const api = {
     togglePause: (): Promise<unknown> => ipcRenderer.invoke('buffer:togglePause')
   },
   updates: {
-    state: (): Promise<{ ready?: string; checking?: boolean; error?: string }> => ipcRenderer.invoke('update:state'),
+    state: (): Promise<UpdateState> => ipcRenderer.invoke('update:state'),
+    check: (): Promise<UpdateState> => ipcRenderer.invoke('update:check'),
     install: (): Promise<void> => ipcRenderer.invoke('update:install')
   },
   editor: {
@@ -106,6 +109,16 @@ const api = {
   },
   activity: { list: (): Promise<ActivityEvent[]> => ipcRenderer.invoke('activity:list') },
   audio: { push: (pcm: ArrayBuffer, levelDb: number) => ipcRenderer.send('audio:push', pcm, levelDb) },
+  libraries: {
+    list: (): Promise<LibraryInfo[]> => ipcRenderer.invoke('libraries:list'),
+    detectMedal: (): Promise<{ path: string; added: boolean } | null> => ipcRenderer.invoke('libraries:detectMedal'),
+    addMedal: (): Promise<LibraryInfo> => ipcRenderer.invoke('libraries:addMedal'),
+    addFolder: (): Promise<LibraryInfo | null> => ipcRenderer.invoke('libraries:addFolder'),
+    remove: (id: string): Promise<void> => ipcRenderer.invoke('libraries:remove', id),
+    rename: (id: string, name: string): Promise<void> => ipcRenderer.invoke('libraries:rename', id, name),
+    rescan: (id?: string): Promise<void> => ipcRenderer.invoke('libraries:rescan', id),
+    open: (id: string): Promise<void> => ipcRenderer.invoke('libraries:open', id)
+  },
   library: {
     query: (q: LibraryQuery): Promise<Clip[]> => ipcRenderer.invoke('library:query', q),
     get: (id: string): Promise<Clip | undefined> => ipcRenderer.invoke('library:get', id),

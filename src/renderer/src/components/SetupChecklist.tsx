@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ArrowRight, Check, Cloud, Gamepad2, Keyboard, ListChecks, MessageSquare, Mic, Sparkles, Upload, X, Youtube } from 'lucide-react'
+import { ArrowRight, Check, Cloud, FolderOpen, Gamepad2, Keyboard, ListChecks, MessageSquare, Mic, Sparkles, Upload, X, Youtube } from 'lucide-react'
+import { useMedalOffer } from './Libraries'
 import { useStore, type Page } from '../lib/store'
 
 interface Step {
@@ -16,6 +17,7 @@ interface Step {
 /** Everything worth setting up, whether it's done, and one click to the exact setting. */
 function useSteps(): Step[] {
   const { settings, status, account, goTo, signIn } = useStore()
+  const medal = useMedalOffer()
   if (!settings) return []
   const c = settings.capture
   const yt = settings.upload.youtube
@@ -31,6 +33,7 @@ function useSteps(): Step[] {
       detail: account.signedIn ? `Signed in as ${account.user?.name ?? 'you'}` : 'Share links, cloud space and auto-uploads',
       action: 'Sign in', run: account.serverUrl ? () => signIn('Sign in for share links, cloud space and scheduled uploads.') : go('settings', 'Account')
     },
+    ...(medal ? [{ id: 'medal', label: 'Your Medal clips', icon: <FolderOpen size={16} />, done: false, optional: true, detail: 'Show them in Clutch without copying anything', action: 'Add', run: go('settings', 'Libraries') }] : []),
     { id: 'import', label: 'Settings from Medal or OBS', icon: <Upload size={16} />, done: false, optional: true, detail: 'Copy your old quality and hotkeys over', action: 'Import', run: go('settings', 'Bring your settings') },
     { id: 'ai', label: 'AI features', icon: <Sparkles size={16} />, done: !!settings.ai.anthropicApiKey || account.signedIn, optional: true, detail: 'Clip kills automatically and name clips', action: 'Set up', run: go('settings', 'AI') }
   ]

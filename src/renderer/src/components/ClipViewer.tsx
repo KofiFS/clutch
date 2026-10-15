@@ -91,10 +91,16 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
   const remove = useCallback(async () => {
     if (!clip) return
     const useTrash = settings?.app.useTrash
-    if (!useTrash && !(await confirm({ title: `Delete "${clip.title}"?`, body: 'The file is removed from disk permanently.', confirmLabel: 'Delete', danger: true }))) return
     const id = clip.id
-    const toTrash = await window.cf.library.trash([id])
-    toast.push({ kind: 'info', title: toTrash ? 'Moved to trash' : 'Deleted', body: clip.title, action: toTrash ? { label: 'Undo', onClick: () => void window.cf.library.restore([id]) } : undefined })
+    if (clip.source) {
+      // Another library's video (Medal, a folder): only hidden from Clutch, the file stays.
+      await window.cf.library.trash([id])
+      toast.push({ kind: 'info', title: 'Removed from Clutch', body: "The video file is still in its folder. Clutch never deletes another app’s clips." })
+    } else {
+      if (!useTrash && !(await confirm({ title: `Delete "${clip.title}"?`, body: 'The file is removed from disk permanently.', confirmLabel: 'Delete', danger: true }))) return
+      const toTrash = await window.cf.library.trash([id])
+      toast.push({ kind: 'info', title: toTrash ? 'Moved to trash' : 'Deleted', body: clip.title, action: toTrash ? { label: 'Undo', onClick: () => void window.cf.library.restore([id]) } : undefined })
+    }
     if (neighbors.next) openClip(neighbors.next)
     else if (neighbors.prev) openClip(neighbors.prev)
     else onClose()
@@ -384,7 +390,7 @@ export function ClipViewer({ clipId, onClose }: { clipId: string; onClose: () =>
                   <button className="btn" onClick={() => setTab('share')}>Share / upload</button>
                   <button className="btn" onClick={() => void window.cf.library.reveal(clip.file)}><FolderOpen size={15} /> Show file</button>
                   <button className="btn col-span-2" disabled={busy} title="A normal H.264 MP4 that plays on any phone, editor or site" onClick={() => { setBusy(true); void window.cf.library.exportCompatible(clip.id).then((f) => { if (f) toast.push({ kind: 'success', title: 'Saved as MP4', body: f }) }).catch((e) => toast.push({ kind: 'error', title: 'Could not save', body: String(e?.message ?? e) })).finally(() => setBusy(false)) }}><Download size={15} /> Save as MP4 (plays everywhere)</button>
-                  <button className="btn-danger" onClick={() => void remove()}><Trash2 size={15} /> Delete</button>
+                  <button className="btn-danger" onClick={() => void remove()} title={clip.source ? 'Hide this video from Clutch. The file stays in its folder.' : undefined}><Trash2 size={15} /> {clip.source ? 'Remove from Clutch' : 'Delete'}</button>
                 </div>
               </div>
             ) : tab === 'edit' ? (

@@ -10,6 +10,7 @@ import { AudioSources } from '../components/AudioSources'
 import { AccountSection } from '../components/Account'
 import { ImportSettings } from '../components/ImportSettings'
 import { SetupChecklist } from '../components/SetupChecklist'
+import { Libraries } from '../components/Libraries'
 import { useToast } from '../components/Toasts'
 import { Badge, Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 
@@ -72,6 +73,8 @@ export default function Settings() {
 
       <SetupChecklist />
 
+      <Updates />
+
       <AccountSection />
 
       <Health onFix={goTo} />
@@ -81,6 +84,8 @@ export default function Settings() {
       <CaptureAreaSettings />
 
       <StorageSettings />
+
+      <Libraries />
 
       <Section title="Quality" icon={<Gauge size={16} />} desc={encoders ? `Working encoders on this PC: ${encoders.available.join(', ')}` : 'Detecting encoders…'} right={<button className="btn-ghost text-sm" onClick={() => setAdvanced(!advanced)}>{advanced ? 'Hide advanced' : 'Advanced'}</button>}>
         <div className="grid grid-cols-4 gap-3">
@@ -235,6 +240,47 @@ export default function Settings() {
         </div>
       </Section>
     </div>
+  )
+}
+
+/** Version, "Check for updates", download progress and "Restart to update". */
+function Updates() {
+  const { update, status } = useStore()
+  const [busy, setBusy] = useState(false)
+  const u = update
+  const check = async () => { setBusy(true); try { await window.cf.updates.check() } finally { setBusy(false) } }
+  const when = u.checkedAt ? new Date(u.checkedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''
+  const line =
+    u.phase === 'unsupported' ? u.message
+    : u.phase === 'checking' ? 'Checking GitHub for a new version…'
+    : u.phase === 'downloading' ? `Downloading Clutch ${u.version ?? ''}… ${Math.round((u.progress ?? 0) * 100)}%`
+    : u.phase === 'ready' ? `Clutch ${u.version} is downloaded. Restart to finish updating${status.running ? ' (your recording will stop)' : ''}.`
+    : u.phase === 'up-to-date' ? `You're on the newest version. Checked ${when}.`
+    : u.phase === 'error' ? u.message
+    : 'Clutch checks for updates by itself a little after it starts, then every few hours.'
+  return (
+    <Section
+      title="Updates"
+      icon={<RefreshCw size={16} />}
+      desc={`Clutch ${u.current || ''}`.trim()}
+      right={
+        u.phase === 'ready'
+          ? <button className="btn-primary" onClick={() => void window.cf.updates.install()}><RefreshCw size={15} /> Restart to update</button>
+          : <button className="btn" disabled={busy || u.phase === 'unsupported' || u.phase === 'checking' || u.phase === 'downloading'} onClick={() => void check()}>
+              <RefreshCw size={15} className={busy || u.phase === 'checking' ? 'animate-spin' : ''} /> Check for updates
+            </button>
+      }
+    >
+      <div className="space-y-2">
+        <p className={`text-sm ${u.phase === 'error' ? 'text-warn' : u.phase === 'ready' || u.phase === 'up-to-date' ? 'text-ink-2' : 'text-ink-3'} flex items-center gap-2`}>
+          {u.phase === 'up-to-date' && <CheckCircle2 size={15} className="text-ok shrink-0" />}
+          {u.phase === 'error' && <AlertTriangle size={15} className="shrink-0" />}
+          <span>{line}</span>
+        </p>
+        {u.phase === 'downloading' && <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden"><div className="h-full bg-accent rounded-full transition-[width] duration-300" style={{ width: `${Math.round((u.progress ?? 0) * 100)}%` }} /></div>}
+        {u.phase !== 'unsupported' && <p className="text-xs text-ink-3">Updates come from <button className="text-accent hover:underline" onClick={() => void window.cf.system.openExternal('https://github.com/KofiFS/clutch/releases')}>Clutch's GitHub releases</button> and never restart Clutch on their own.</p>}
+      </div>
+    </Section>
   )
 }
 

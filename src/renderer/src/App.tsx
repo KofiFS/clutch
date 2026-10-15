@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Film, LayoutDashboard, Monitor, PanelLeftClose, PanelLeftOpen, Pause, Play, Search, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
+import { Film, LayoutDashboard, Monitor, PanelLeftClose, PanelLeftOpen, Pause, Play, RefreshCw, Search, Settings as SettingsIcon, Sparkles, Square, UploadCloud, Zap } from 'lucide-react'
 import { StoreProvider, useStore, type Page } from './lib/store'
 import { ToastProvider } from './components/Toasts'
 import { GameIcon, Kbd } from './components/ui'
@@ -129,7 +129,7 @@ function ActionButton({ label, hint, onClick, primary, disabled, collapsed, chil
 }
 
 function Shell() {
-  const { page, setPage, status, start, stop, clipNow, settings, game, viewerClipId, openClip } = useStore()
+  const { page, setPage, status, start, stop, clipNow, settings, game, viewerClipId, openClip, update } = useStore()
   const [searchOpen, setSearchOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('cf.sidebar.collapsed') === '1' } catch { return false } })
   useEffect(() => { try { localStorage.setItem('cf.sidebar.collapsed', collapsed ? '1' : '0') } catch { /* private mode */ } }, [collapsed])
@@ -174,6 +174,19 @@ function Shell() {
         </nav>
 
         <div className="mt-auto flex flex-col gap-3">
+          {update.phase === 'ready' && (
+            <div className="relative group">
+              <button
+                onClick={() => void window.cf.updates.install()}
+                className={`w-full h-10 rounded-xl flex items-center gap-2.5 text-[13px] font-semibold text-accent bg-accent/12 hover:bg-accent/20 transition-colors ${collapsed ? 'justify-center' : 'px-3.5'}`}
+                aria-label={`Restart to update to Clutch ${update.version}`}
+              >
+                <RefreshCw size={16} />
+                {!collapsed && <span className="truncate">Restart to update</span>}
+              </button>
+              <Tip label={`Clutch ${update.version} is ready`} hint="Restart to update" show={collapsed} />
+            </div>
+          )}
           {/* What Clutch is doing, and the controls for it */}
           <div className={`rounded-xl bg-white/[0.04] ${collapsed ? 'p-1.5' : 'p-3'} flex flex-col gap-2.5`}>
             <button onClick={() => setPage('dashboard')} className={`relative group flex items-center gap-3 text-left ${collapsed ? 'justify-center py-1' : ''}`} aria-label={`${stateText}${game ? ` · ${game.name}` : ''}`}>

@@ -135,12 +135,14 @@ export function parseOcr(lines: OcrLine[]): ImportedSettings {
 
   const labelOf = new Map<OcrLine, Field>()
   for (const l of lines) {
+    // "60 FPS", "1080p", "30 seconds" are values even though they contain a label word.
+    if (/^\s*[\d.,]+\s*[a-z%]{0,8}\s*$/i.test(l.text)) continue
     if (!isLabelLike(l) && !/[:：]/.test(l.text)) continue
     const head = l.text.split(/[:：]/)[0]
     const hit = LABELS.find((x) => x.re.test(head) && !(x.not && x.not.test(head)))
     if (!hit) continue
     // A label is mostly the label words. "Microphone (Blue Snowball)" is a value that mentions one.
-    const rest = head.replace(hit.re, '').replace(/(record|enable|enabled|default|the|your|audio|video|settings?|recording|clips?|save)/gi, '').replace(/[^a-z0-9]+/gi, '')
+    const rest = head.replace(hit.re, '').replace(/\b(record|enable|enabled|default|the|your|audio|video|settings?|recording|clips?|save)\b/gi, '').replace(/[^a-z0-9]+/gi, '')
     if (rest.length <= 12 || /[:：]/.test(l.text)) labelOf.set(l, hit.field)
   }
   const labelLines = new Set(labelOf.keys())
@@ -168,7 +170,7 @@ export function parseOcr(lines: OcrLine[]): ImportedSettings {
       case 'clip':
       case 'buffer': {
         // NVIDIA: "Save the last 3 minutes recorded  Alt+F10" is the save shortcut, not a length.
-        const key = /(f\d{1,2}|alt|ctrl|shift)/i.test(v) ? parseHotkey(v) : undefined
+        const key = /\b(f\d{1,2}|alt|ctrl|shift)\b/i.test(v) ? parseHotkey(v) : undefined
         if (key) { found.hotkey ??= key; break }
         const sec = parseDuration(v, unitHint)
         if (sec && sec >= 5 && sec <= 4 * 3600) {

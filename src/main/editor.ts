@@ -78,7 +78,7 @@ async function transcribe(src: string, start: number, end: number, srt: string):
 export interface ExportResult { file: string; title: string }
 
 /** Crop / reframe, speed and captions for one clip (optionally a trimmed range). */
-export async function exportEdit(clip: Clip, o: EditOptions, onProgress?: (stage: string, f: number) => void): Promise<ExportResult> {
+export async function exportEdit(clip: Clip, o: EditOptions, onProgress?: (stage: string, f: number) => void, outDir = path.dirname(clip.file)): Promise<ExportResult> {
   const info = await probe(clip.file)
   const start = Math.max(0, o.start ?? 0)
   const end = Math.min(info.durationSec || clip.durationSec, o.end ?? (info.durationSec || clip.durationSec))
@@ -97,7 +97,8 @@ export async function exportEdit(clip: Clip, o: EditOptions, onProgress?: (stage
   const audio = await hasAudio(clip.file)
   const filter = editFilter({ ...o, speed }, { w: info.width || clip.width, h: info.height || clip.height }, srt, audio)
   const suffix = editSuffix({ ...o, speed }, !!srt)
-  const base = clip.file.replace(/\.mp4$/i, '')
+  // Never the clip's own path, whatever its extension.
+  const base = path.join(outDir, path.basename(clip.file).replace(/\.[^.]+$/, ''))
   let outFile = `${base} ${suffix || 'edit'}.mp4`
   for (let i = 2; fs.existsSync(outFile); i++) outFile = `${base} ${suffix || 'edit'} ${i}.mp4`
 
@@ -121,7 +122,7 @@ export async function exportCompatible(clip: Clip, outFile: string, onProgress?:
 }
 
 /** Join clips in order into one video (scaled to the first clip's size, 60 fps). */
-export async function joinClips(clips: Clip[], onProgress?: (f: number) => void): Promise<ExportResult> {
+export async function joinClips(clips: Clip[], onProgress?: (f: number) => void, outDir?: string): Promise<ExportResult> {
   if (clips.length < 2) throw new Error('Pick at least two clips')
   const first = await probe(clips[0].file)
   const W = even(Math.min(first.width || 1920, 2560))
@@ -135,7 +136,7 @@ export async function joinClips(clips: Clip[], onProgress?: (f: number) => void)
     meta.push({ durationSec: c.durationSec, hasAudio: await hasAudio(c.file) })
   }
   const filter = joinFilter(meta, W, H)
-  const dir = path.dirname(clips[0].file)
+  const dir = outDir ?? path.dirname(clips[0].file)
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const outFile = path.join(dir, `Joined ${stamp}.mp4`)
   const args = ['-hide_banner', '-nostats', '-progress', 'pipe:1', '-y', ...inputs, '-filter_complex', filter, '-map', '[v]', '-map', '[a]', ...(await h264Args()), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', outFile]

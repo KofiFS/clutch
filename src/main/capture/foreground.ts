@@ -4,6 +4,7 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child
 import fs from 'node:fs'
 import path from 'node:path'
 import type { GameInfo } from '../../shared/types'
+import { cleanGameName } from '../../shared/types'
 
 const LINE_BREAK = /\r?\n/
 
@@ -196,7 +197,7 @@ export function gameNameFrom(fg: Pick<ForegroundApp, 'process' | 'title'>): stri
   const proc = fg.process.toLowerCase()
   // Browsers, launchers and tools: use the app name, not whatever tab/document is open.
   if (NOT_GAMES.test(proc)) return FRIENDLY[proc] ?? fg.process
-  const t = fg.title.replace(/\s+[-–|].*$/, '').replace(/[™®]/g, '').trim()
+  const t = cleanGameName(fg.title.replace(/\s+[-–|].*$/, '').replace(/[™®]/g, '').trim())
   return t.length > 1 && t.length < 48 ? t : fg.process
 }
 

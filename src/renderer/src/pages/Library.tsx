@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckSquare, Eye, Film, Flame, MessageSquare, Video, FolderOpen, Heart, Keyboard, Mic, MousePointerClick, Search, Tag, Trash2, UploadCloud, X, Undo2, Combine, Loader2, Check, Download } from 'lucide-react'
-import type { Clip, TriggerSource } from '../../../shared/types'
+import type { Clip, TriggerSource, LibraryInfo } from '../../../shared/types'
 import { dayLabel, fileUrl, fmtDuration, timeAgo, useStore } from '../lib/store'
 import type { GameSummary } from '../../../shared/types'
 import { Empty, GameIcon, Kbd, useConfirm } from '../components/ui'
@@ -23,6 +23,17 @@ export default function Library() {
   const [fav, setFav] = useState(false)
   const [sort, setSort] = useState<'newest' | 'oldest' | 'longest' | 'largest'>('newest')
   const [view, setView] = useState<'clips' | 'trash'>('clips')
+  // Which library: '' = all, 'clutch' = recorded by Clutch, otherwise a library id.
+  const [source, setSource] = useState('')
+  const [libs, setLibs] = useState<LibraryInfo[]>([])
+  useEffect(() => {
+    void window.cf.libraries.list().then(setLibs)
+    const off = window.cf.on('libraries', (l: LibraryInfo[]) => setLibs(l))
+    return () => { off() }
+  }, [])
+  const libName = (id?: string) => libs.find((l) => l.id === id)?.name
+  const shownLib = source && source !== 'clutch' ? libs.find((l) => l.id === source) : undefined
+  const openShownFolder = () => void (shownLib ? window.cf.libraries.open(shownLib.id) : window.cf.library.openFolder())
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [tagDraft, setTagDraft] = useState<string | null>(null)
   const lastClicked = useRef<string | null>(null)
@@ -38,11 +49,13 @@ export default function Library() {
   }, [libraryPreset, setLibraryPreset])
 
   const reload = useCallback(() => {
-    void window.cf.library.query({ text, game: game || undefined, trigger, favoritesOnly: fav, sort, trashed: view === 'trash' }).then(setClips)
+    void window.cf.library.query({ text, game: game || undefined, trigger, favoritesOnly: fav, sort, trashed: view === 'trash', source: source || undefined }).then(setClips)
     void window.cf.library.games().then(setGames)
-  }, [text, game, trigger, fav, sort, view])
+  }, [text, game, trigger, fav, sort, view, source])
   useEffect(reload, [reload, libraryVersion])
-  useEffect(() => { setSelected(new Set()) }, [view, game, trigger, fav, text])
+  useEffect(() => { setSelected(new Set()) }, [view, game, trigger, fav, text, source])
+  // A library that was removed can't stay selected as the filter.
+  useEffect(() => { if (source && source !== 'clutch' && !libs.some((l) => l.id === source)) setSource('') }, [libs, source])
 
   // Keyboard: / focus search, Ctrl+A select all, Delete trash selection, Esc clear selection
   useEffect(() => {
@@ -103,12 +116,19 @@ export default function Library() {
     const ids = [...selected]
     if (!ids.length) return
     if (!settings?.app.useTrash && !(await confirm({ title: `Delete ${ids.length} clip${ids.length > 1 ? 's' : ''}?`, body: 'The files are removed from disk permanently.', confirmLabel: 'Delete', danger: true }))) return
+    // Videos from other libraries (Medal, a folder) are only removed from Clutch, never deleted.
+    const external = clips.filter((c) => selected.has(c.id) && c.source)
+    const ownIds = ids.filter((id) => !external.some((c) => c.id === id))
     const toTrash = await window.cf.library.trash(ids)
     setSelected(new Set())
+    const n = (k: number) => `${k} clip${k === 1 ? '' : 's'}`
     toast.push({
       kind: 'info',
-      title: toTrash ? `Moved ${ids.length} clip${ids.length > 1 ? 's' : ''} to trash` : `Deleted ${ids.length} clip${ids.length > 1 ? 's' : ''}`,
-      action: toTrash ? { label: 'Undo', onClick: () => void window.cf.library.restore(ids) } : undefined
+      title: !ownIds.length
+        ? `Removed ${n(external.length)} from Clutch`
+        : toTrash ? `Moved ${n(ownIds.length)} to trash` : `Deleted ${n(ownIds.length)}`,
+      body: external.length ? `The video file${external.length === 1 ? ' is' : 's are'} still in ${libName(external[0].source) ?? 'its folder'}. Clutch never deletes another app's clips.` : undefined,
+      action: toTrash && ownIds.length ? { label: 'Undo', onClick: () => void window.cf.library.restore(ownIds) } : undefined
     })
   }
   const [joining, setJoining] = useState<string | null>(null)
@@ -147,7 +167,7 @@ export default function Library() {
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Clips</h1>
-          <p className="text-ink-3 text-sm mt-1">{clips.length} {view === 'trash' ? 'in trash' : 'clips'}{game ? ` in ${game}` : ''} · <button className="hover:text-ink underline-offset-2 hover:underline" onClick={() => void window.cf.library.openFolder()}>{settings?.capture.outputDir}</button></p>
+          <p className="text-ink-3 text-sm mt-1">{clips.length} {view === 'trash' ? 'in trash' : 'clips'}{game ? ` in ${game}` : ''} · <button className="hover:text-ink underline-offset-2 hover:underline" onClick={openShownFolder}>{shownLib ? shownLib.path : settings?.capture.outputDir}</button></p>
         </div>
         <div className="flex items-center gap-2">
           {selecting ? (
@@ -159,7 +179,7 @@ export default function Library() {
             <button className="btn" onClick={() => setSelectMode(true)} disabled={!clips.length} title="Pick several clips to delete, tag, join, export or share at once (or Ctrl+click / Shift+click)"><CheckSquare size={15} /> Select</button>
           )}
           <button className={`btn ${view === 'trash' ? 'border-accent' : ''}`} onClick={() => setView(view === 'trash' ? 'clips' : 'trash')}><Trash2 size={15} /> {view === 'trash' ? 'Back to clips' : 'Trash'}</button>
-          <button className="btn" onClick={() => void window.cf.library.openFolder()}><FolderOpen size={15} /> Open folder</button>
+          <button className="btn" onClick={openShownFolder}><FolderOpen size={15} /> Open folder</button>
         </div>
       </header>
 
@@ -189,6 +209,13 @@ export default function Library() {
           ))}
         </div>
         <button className={`btn ${fav ? 'border-bad/50 text-ink' : ''}`} onClick={() => setFav(!fav)}><Heart size={15} className={fav ? 'fill-bad text-bad' : ''} /> Favorites</button>
+        {libs.length > 0 && view === 'clips' && (
+          <select className="input w-40" value={source} onChange={(e) => setSource(e.target.value)} aria-label="Library">
+            <option value="">All libraries</option>
+            <option value="clutch">Clutch</option>
+            {libs.map((l) => <option key={l.id} value={l.id}>{l.name}{l.scanning ? ' (adding…)' : ''}</option>)}
+          </select>
+        )}
         <select className="input w-36" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort">
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
@@ -221,7 +248,9 @@ export default function Library() {
                   <button className="block w-full aspect-video bg-surface-3 relative" onClick={(e) => (selecting || e.ctrlKey || e.shiftKey ? toggleSelect(c, e) : openClip(c.id))} aria-label={selecting ? `${isSel ? 'Deselect' : 'Select'} ${c.title}` : `Open ${c.title}`}>
                     <HoverPreview clip={c} />
                     <span className="absolute bottom-1.5 right-1.5 chip bg-black/70 border-0 text-white tabular">{fmtDuration(c.durationSec)}</span>
-                    <span className="absolute top-1.5 right-1.5 chip bg-black/70 border-0 text-white"><Icon size={11} /> {TRIGGER_LABEL[c.trigger]}</span>
+                    {c.source
+                      ? <span className="absolute top-1.5 right-1.5 chip bg-black/70 border-0 text-white" title={`From your ${libName(c.source) ?? 'other'} library. The file stays where it is.`}><FolderOpen size={11} /> {libName(c.source) ?? 'Library'}</span>
+                      : <span className="absolute top-1.5 right-1.5 chip bg-black/70 border-0 text-white"><Icon size={11} /> {TRIGGER_LABEL[c.trigger]}</span>}
                     {c.uploads.some((u) => u.status === 'done') && <span className="absolute bottom-1.5 left-1.5 chip bg-black/70 border-0 text-white"><UploadCloud size={11} /> Uploaded</span>}
                   </button>
                   {/* A drawn checkbox (no native input), so the tick updates on the same click. */}

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AccountState, ActivityEvent, BufferStatus, Clip, GameInfo, Settings } from '../../../shared/types'
+import type { AccountState, ActivityEvent, BufferStatus, Clip, GameInfo, Settings, UpdateState } from '../../../shared/types'
 import { loopbackActive, startLoopback, stopLoopback } from './loopback'
 import { revealWhenReady } from './reveal'
 import { useToast } from '../components/Toasts'
@@ -36,6 +36,8 @@ interface Store {
   stop: () => Promise<void>
   clipNow: () => Promise<void>
   loopbackError: string | null
+  /** Self-update status (Settings → Updates, sidebar restart button). */
+  update: UpdateState
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -64,14 +66,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     else setTimeout(() => document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' }), 150)
   }, [])
   const [loopbackError, setLoopbackError] = useState<string | null>(null)
+  const [update, setUpdate] = useState<UpdateState>({ phase: 'idle', current: '' })
+  useEffect(() => {
+    void window.cf.updates.state().then(setUpdate)
+    const off = window.cf.on('update', (st: UpdateState) => setUpdate(st))
+    return () => { off() }
+  }, [])
   const toast = useToast()
   // Updates download in the background; offer a restart once (never restart on our own).
   useEffect(() => {
     let shown = ''
-    const off = window.cf.on('update', (st: { ready?: string }) => {
-      if (!st.ready || st.ready === shown) return
-      shown = st.ready
-      toast.push({ kind: 'info', title: `Clutch ${st.ready} is ready`, body: 'It installs the next time Clutch restarts.', action: { label: 'Restart now', onClick: () => void window.cf.updates.install() }, ms: 15000 })
+    const off = window.cf.on('update', (st: UpdateState) => {
+      if (st.phase !== 'ready' || !st.version || st.version === shown) return
+      shown = st.version
+      toast.push({ kind: 'info', title: `Clutch ${st.version} is ready`, body: 'It installs the next time Clutch restarts.', action: { label: 'Restart now', onClick: () => void window.cf.updates.install() }, ms: 15000 })
     })
     return () => { off() }
   }, [toast])
@@ -135,8 +143,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const clipNow = useCallback(async () => { await window.cf.buffer.clipNow() }, [])
 
   const value = useMemo<Store>(
-    () => ({ settings, status, activity, game, libraryVersion, uploadsVersion, page, setPage, goTo, viewerClipId, openClip, libraryPreset, setLibraryPreset, account, signIn, signInReason, closeSignIn, proOpen, setProOpen, save, start, stop, clipNow, loopbackError }),
-    [settings, status, activity, game, libraryVersion, uploadsVersion, page, viewerClipId, libraryPreset, account, signIn, signInReason, closeSignIn, proOpen, save, start, stop, clipNow, loopbackError]
+    () => ({ settings, status, activity, game, libraryVersion, uploadsVersion, page, setPage, goTo, viewerClipId, openClip, libraryPreset, setLibraryPreset, account, signIn, signInReason, closeSignIn, proOpen, setProOpen, save, start, stop, clipNow, loopbackError, update }),
+    [settings, status, activity, game, libraryVersion, uploadsVersion, page, viewerClipId, libraryPreset, account, signIn, signInReason, closeSignIn, proOpen, save, start, stop, clipNow, loopbackError, update]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

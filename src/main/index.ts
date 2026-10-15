@@ -16,6 +16,8 @@ import { applyChanges } from './importer/parse'
 import { fromModel, smartReadLocal } from './importer/smart'
 import { MiniWidget } from './miniWidget'
 import { Updater } from './updater'
+import { detectMedal, LibrarySources } from './library/sources'
+import { baseName, outputDirFor } from './library'
 import { Compressor } from './library/compressor'
 import { OverlayToast } from './overlay'
 import { Recorder } from './recorder'
@@ -46,6 +48,7 @@ const registeredKeys = new Set<string>()
 let hotkeySignature = ''
 let digest: DailyDigest | null = null
 let account: CloudAccount
+let sources: LibrarySources
 let quitting = false
 
 const TITLEBAR = { color: '#00000000', symbolColor: '#c3c5cc', height: 44 }
@@ -282,7 +285,7 @@ app.whenReady().then(async () => {
     // Only serve clips, thumbnails and icons: the clips folder, the app's data folder,
     // and any folder that already holds a library clip (e.g. an older clips folder).
     const file = path.normalize(rel)
-    const roots = [settings.get().capture.outputDir, app.getPath('userData'), ...new Set(recorder.library.all().map((c) => path.dirname(path.dirname(c.file))))]
+    const roots = [settings.get().capture.outputDir, app.getPath('userData'), ...(settings.get().libraries ?? []).map((l) => l.path), ...new Set(recorder.library.own().map((c) => path.dirname(path.dirname(c.file))))]
     if (!isInside(file, roots)) return new Response('forbidden', { status: 403 })
     return serveFile(file, req)
   })
@@ -321,6 +324,12 @@ app.whenReady().then(async () => {
   recorder.on('game', (g) => { send('game', g); tray?.refresh() })
   recorder.on('notice', (n) => overlay?.show(n.title, n.sub, n.kind, 2200))
   recorder.library.on('change', () => send('library-changed', null))
+  // Other clip libraries (Medal, any folder), read in place.
+  sources = new LibrarySources(recorder.library, settings, () => settings.get().capture.outputDir)
+  sources.on('change', (list) => send('libraries', list))
+  sources.on('log', (m) => recorder.log('info', m))
+  setTimeout(() => sources.scanAll(), 45_000)
+  setInterval(() => sources.scanAll(), 30 * 60_000)
   scheduler.on('change', () => send('uploads-changed', null))
   scheduler.on('log', (m) => recorder.log('upload', m))
   scheduler.on('done', ({ clip, upload }) => send('upload-done', { clipId: clip.id, url: upload.url, title: clip.title }))
@@ -396,6 +405,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('system:testOverlay', () => overlay?.show('Clipped!', 'This is how it looks in game', 'clip'))
   ipcMain.handle('system:canAcrylic', () => canAcrylic)
   ipcMain.handle('update:state', () => updater.state)
+  ipcMain.handle('update:check', () => updater.check())
   // ---- Editor: crop / vertical / speed / captions, and joining clips. Results are new clips.
   const editorProgress = (clipId: string) => (stage: string, f: number) => send('editor-progress', { clipId, stage, progress: f })
   ipcMain.handle('editor:captionModel', async () => (await import('./editor')).captionModelReady())
@@ -408,7 +418,7 @@ app.whenReady().then(async () => {
     const clip = recorder.library.get(clipId)
     if (!clip) throw new Error('Clip not found')
     const { exportEdit } = await import('./editor')
-    const out = await exportEdit(clip, opts, editorProgress(clipId))
+    const out = await exportEdit(clip, opts, editorProgress(clipId), outputDirFor(clip, settings.get().capture.outputDir))
     const added = await recorder.library.add(out.file, { game: clip.game, gameProcess: clip.gameProcess, gameIcon: clip.gameIcon, trigger: 'manual', title: out.title, tags: clip.tags })
     recorder.log('clip', `Exported "${added.title}"`, added.id)
     return added
@@ -416,7 +426,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('editor:join', async (_e, ids: string[]) => {
     const clips = ids.map((id) => recorder.library.get(id)).filter((c): c is NonNullable<typeof c> => !!c).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
     const { joinClips } = await import('./editor')
-    const out = await joinClips(clips, (f) => send('editor-progress', { clipId: '*join', stage: 'Joining', progress: f }))
+    const out = await joinClips(clips, (f) => send('editor-progress', { clipId: '*join', stage: 'Joining', progress: f }), outputDirFor(clips[0], settings.get().capture.outputDir))
     const games = [...new Set(clips.map((c) => c.game))]
     const added = await recorder.library.add(out.file, { game: games.length === 1 ? games[0] : 'Montage', gameIcon: games.length === 1 ? clips[0].gameIcon : undefined, trigger: 'manual', title: out.title })
     recorder.log('clip', `Joined ${clips.length} clips into "${added.title}"`, added.id)
@@ -542,6 +552,27 @@ app.whenReady().then(async () => {
   ipcMain.on('audio:push', (_e, pcm: ArrayBuffer, levelDb: number) => recorder.pushSystemAudio(Buffer.from(pcm), levelDb))
 
   ipcMain.handle('library:query', (_e, q: LibraryQuery) => recorder.library.query(q))
+  ipcMain.handle('libraries:list', () => sources.list())
+  ipcMain.handle('libraries:detectMedal', async () => {
+    const dir = await detectMedal()
+    if (!dir) return null
+    const already = (settings.get().libraries ?? []).some((l) => path.resolve(l.path).toLowerCase() === path.resolve(dir).toLowerCase())
+    return { path: dir, added: already }
+  })
+  ipcMain.handle('libraries:addMedal', async () => {
+    const dir = await detectMedal()
+    if (!dir) throw new Error("Couldn't find Medal's clips folder. Use Add folder and pick it yourself.")
+    return sources.add(dir, 'medal')
+  })
+  ipcMain.handle('libraries:addFolder', async () => {
+    const r = await dialog.showOpenDialog(win!, { title: 'Add a folder of clips', defaultPath: app.getPath('videos'), properties: ['openDirectory'] })
+    if (r.canceled || !r.filePaths[0]) return null
+    return sources.add(r.filePaths[0])
+  })
+  ipcMain.handle('libraries:remove', (_e, id: string) => sources.remove(id))
+  ipcMain.handle('libraries:rename', (_e, id: string, name: string) => sources.rename(id, name))
+  ipcMain.handle('libraries:rescan', (_e, id?: string) => (id ? sources.scan(id) : sources.scanAll()))
+  ipcMain.handle('libraries:open', (_e, id: string) => { const l = (settings.get().libraries ?? []).find((x) => x.id === id); if (l) void shell.openPath(l.path) })
   ipcMain.handle('library:get', (_e, id: string) => recorder.library.get(id))
   ipcMain.handle('library:games', () => recorder.library.games())
   ipcMain.handle('library:tags', () => recorder.library.tags())
@@ -561,7 +592,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('library:trim', async (_e, id: string, startSec: number, endSec: number, mode: 'new' | 'replace') => {
     const clip = recorder.library.get(id)
     if (!clip) return null
-    const out = clip.file.replace(/\.mp4$/i, ` trim ${Math.round(startSec)}-${Math.round(endSec)}.mp4`)
+    // A new file, never the clip's own path; another library's videos are trimmed into Clutch's folder.
+    const out = path.join(outputDirFor(clip, settings.get().capture.outputDir), `${baseName(clip.file)} trim ${Math.round(startSec)}-${Math.round(endSec)}.mp4`)
     const ok = await trimClip(clip.file, out, startSec, endSec)
     if (!ok) throw new Error('Trim failed')
     if (mode === 'replace') {
@@ -635,7 +667,7 @@ app.whenReady().then(async () => {
     setLaunchAtLogin: (on) => { settings.set({ app: { ...settings.get().app, launchAtLogin: on } }) },
     startStop: () => void (recorder.status.running || recorder.isPaused ? recorder.stop('manual') : recorder.start('manual').then((ok) => { if (ok) shrinkToWidget() })),
     isPaused: () => recorder.isPaused,
-    updateReady: () => updater.state.ready ?? null,
+    updateReady: () => (updater.state.phase === 'ready' ? updater.state.version ?? null : null),
     installUpdate: () => updater.install(),
     missedGame: () => {
       const a = recorder.lastApp

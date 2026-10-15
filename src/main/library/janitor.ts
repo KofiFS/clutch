@@ -60,16 +60,16 @@ export function enforceStorage(lib: Library, rules: StorageRules, now = Date.now
 
   if (rules.deleteAfterDays > 0) {
     const cutoff = now - rules.deleteAfterDays * 86400_000
-    for (const c of lib.everything().filter((x) => !x.favorite && Date.parse(x.createdAt) < cutoff)) drop(c, 'age')
+    for (const c of lib.own().filter((x) => !x.favorite && Date.parse(x.createdAt) < cutoff)) drop(c, 'age')
   }
 
   if (rules.maxGB > 0) {
     const limit = rules.maxGB * GB
-    let used = lib.everything().reduce((n, c) => n + (c.sizeBytes || 0), 0)
+    let used = lib.own().reduce((n, c) => n + (c.sizeBytes || 0), 0)
     if (used > limit) {
       // Trash first (oldest deletion first), then the oldest clips that aren't favorites.
-      const trash = lib.everything().filter((c) => c.trashedAt).sort((a, b) => Date.parse(a.trashedAt!) - Date.parse(b.trashedAt!))
-      const live = lib.everything().filter((c) => !c.trashedAt && !c.favorite).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+      const trash = lib.own().filter((c) => c.trashedAt).sort((a, b) => Date.parse(a.trashedAt!) - Date.parse(b.trashedAt!))
+      const live = lib.own().filter((c) => !c.trashedAt && !c.favorite).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
       for (const c of [...trash, ...live]) {
         if (used <= limit) break
         used -= c.sizeBytes || 0

@@ -216,6 +216,36 @@ export const PLAN_ROWS: { label: string; free: string; pro: string }[] = [
   { label: 'Sponsored cards', free: 'Optional (can turn off)', pro: 'Never' }
 ]
 
+/**
+ * A game's display name without technical tags from its window title, so "Rocket League (64-bit,
+ * DX11, Cooked)" and Medal's "Rocket League" folder are the same game.
+ */
+export function cleanGameName(name: string): string {
+  const tech = /\b(64-?bit|32-?bit|x64|x86|dx ?\d+|directx ?\d*|vulkan|opengl|d3d\d*|shipping|cooked|win(64|32)|development|debug|release|test build)\b/i
+  let n = name.trim()
+  for (let i = 0; i < 3; i++) {
+    const m = n.match(/\s*[(\[]([^()[\]]*)[)\]]\s*$/)
+    if (!m || !tech.test(m[1])) break
+    n = n.slice(0, m.index).trim()
+  }
+  return n || name.trim()
+}
+
+/** Self-update status (installed app, from GitHub Releases). */
+export interface UpdateState {
+  phase: 'idle' | 'unsupported' | 'checking' | 'downloading' | 'up-to-date' | 'ready' | 'error'
+  /** The version running now. */
+  current: string
+  /** The new version being downloaded or ready to install. */
+  version?: string
+  /** Download progress 0..1. */
+  progress?: number
+  /** When the last check finished. */
+  checkedAt?: string
+  /** Why updates are off, or what went wrong. */
+  message?: string
+}
+
 export interface AppBehavior {
   /** First-run wizard completed. */
   onboarded: boolean
@@ -292,6 +322,31 @@ export interface Settings {
   /** Per-game capture overrides. */
   profiles: Record<string, GameProfile>
   startBufferOnLaunch: boolean
+  /** Other clip folders shown next to Clutch's own clips (Medal, OBS, any folder). Read in place. */
+  libraries: LibrarySource[]
+}
+
+/**
+ * A folder of videos from another app (or anywhere) that Clutch lists without copying. Clutch
+ * never deletes, moves or shrinks files in it: removing a clip only hides it from Clutch.
+ */
+export interface LibrarySource {
+  id: string
+  name: string
+  /** Folder that holds the videos (subfolders are scanned; a first-level subfolder is the game). */
+  path: string
+  /** 'medal' adds Medal-specific touches (file-name dates, "Screen Recording" as Desktop). */
+  kind: 'folder' | 'medal'
+  addedAt: string
+}
+
+/** A library as the UI shows it, with what's in it right now. */
+export interface LibraryInfo extends LibrarySource {
+  count: number
+  bytes: number
+  /** Folder can't be read right now (unplugged drive, deleted, no permission). */
+  missing: boolean
+  scanning?: { done: number; total: number }
 }
 
 export type TriggerSource = 'hotkey' | 'vision' | 'voice' | 'hype' | 'manual' | 'long'
@@ -332,6 +387,8 @@ export interface Clip {
   bookmarks?: number[]
   /** Set once the clip is in the Clutch cloud. */
   cloud?: { id: string; shareUrl: string; uploadedAt: string; expires: number | null }
+  /** Id of the LibrarySource this video lives in. Unset for clips Clutch recorded itself. */
+  source?: string
 }
 
 export interface UploadRecord {
@@ -495,6 +552,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cloud: { serverUrl: OFFICIAL_CLOUD_URL, backupFavorites: true },
   blocklist: [],
   extraGames: [],
+  libraries: [],
   storage: { maxGB: 100, deleteAfterDays: 0, lowSpaceGB: 10, shrink: 'auto', shrinkAfterDays: 1, shrinkSince: null },
   allowlist: [],
   profiles: {},
