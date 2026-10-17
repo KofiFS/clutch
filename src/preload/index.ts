@@ -34,6 +34,7 @@ const api = {
     encoders: (): Promise<{ available: string[]; best: string }> => ipcRenderer.invoke('system:encoders'),
     runningApps: (): Promise<RunningApp[]> => ipcRenderer.invoke('system:runningApps'),
     openExternal: (url: string) => ipcRenderer.invoke('system:openExternal', url),
+    openLogs: (): Promise<string> => ipcRenderer.invoke('system:openLogs'),
     health: (): Promise<HealthItem[]> => ipcRenderer.invoke('system:health'),
     testHotkey: (accel: string): Promise<boolean> => ipcRenderer.invoke('system:testHotkey', accel),
     testOverlay: () => ipcRenderer.invoke('system:testOverlay'),

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowDownToLine, BookOpen, Bug, CircleHelp, ExternalLink, Keyboard, ListChecks, Loader2, RefreshCw, Sparkles, Stethoscope } from 'lucide-react'
+import { ArrowDownToLine, BookOpen, Bug, CircleHelp, ExternalLink, FolderOpen, Keyboard, ListChecks, Loader2, RefreshCw, Sparkles, Stethoscope } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { Kbd, Modal } from './ui'
 
@@ -86,7 +86,8 @@ export function HelpButton() {
     { icon: <ListChecks size={16} />, label: 'Setup checklist', run: go(() => goTo('settings', 'Setup')) },
     { icon: <Stethoscope size={16} />, label: 'Health check', sub: "When something isn't working", run: go(() => goTo('settings', 'Health check')) },
     { icon: <Sparkles size={16} />, label: "What's new", run: web(`${REPO}/releases`), external: true },
-    { icon: <Bug size={16} />, label: 'Report a bug or ask for a feature', run: web(`${REPO}/issues/new/choose`), external: true }
+    { icon: <Bug size={16} />, label: 'Report a bug or ask for a feature', run: web(`${REPO}/issues/new/choose`), external: true },
+    { icon: <FolderOpen size={16} />, label: 'Open log folder', sub: 'Attach clutch.log to a bug report', run: go(() => void window.cf.system.openLogs()) }
   ]
   return (
     <div className="relative">

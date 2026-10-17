@@ -12,6 +12,7 @@ import type { SettingsStore } from './settings'
 import { VisionJudge, type CloudJudge } from './triggers/vision'
 import { VoiceDetector } from './triggers/voice'
 import { VoiceCommands } from './capture/voiceCommands'
+import { logLine } from './log'
 import { HypeDetector } from './triggers/hype'
 import { suggestTitle } from './triggers/titler'
 import { enforceStorage, freeBytes } from './library/janitor'
@@ -61,6 +62,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   private lastGameSeenAt = 0
   private autoStarted = false
   private starting = false
+  private activeGameProc: string | null = null
   /** When the last recording started and whether stop() ended it, to tell crashes from stops. */
   private startedAt = 0
   private stopping = false
@@ -112,7 +114,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       if (st.error) this.log('error', st.error)
       // The recorder died on its own soon after starting: count it as a failed start.
       if (!st.running && !this.stopping && !this.paused && this.startedAt && Date.now() - this.startedAt < 20_000) this.noteStartFailure(st.error)
-      if (st.running && this.startedAt && Date.now() - this.startedAt > 60_000 && this.autoFail.count) this.autoFail = { count: 0, until: 0, game: '' }
+      if (st.running && this.startedAt && Date.now() - this.startedAt > 60_000) { this.autoFail = { count: 0, until: 0, game: '' }; this.stallCount = 0 }
       if (!st.running) { this.voice.stop(); this.status.talking = false; this.activeCapture = null; if (!this.paused) this.applyVoiceCommands() }
       this.pushStatus()
     })
@@ -131,6 +133,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       void this.clipRange(at - c.preSeconds * 1000, at + Math.max(4, c.postSeconds) * 1000, 'hype', { event: source === 'mic' ? 'Hype moment' : 'Voice chat went off', hypeDb: peakDb })
     })
     this.buffer.on('log', (line) => this.log('info', line))
+    this.buffer.on('stall', ({ seconds, stderr }) => void this.onStall(seconds, stderr))
     this.buffer.on('snapshot', (jpeg) => void this.onSnapshot(jpeg))
     this.voice.on('state', (st) => {
       this.status.talking = st.talking
@@ -225,6 +228,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
 
   log(kind: ActivityEvent['kind'], message: string, clipId?: string) {
     const ev: ActivityEvent = { at: new Date().toISOString(), kind, message, clipId }
+    logLine(kind, message)
     this.activity.unshift(ev)
     this.activity = this.activity.slice(0, 300)
     this.emit('activity', ev)
@@ -280,6 +284,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
         }
       }
       this.activeCapture = capture
+      // "Game window" mode remembers which game it is recording, so a game that appears later
+      // (the recording began on the whole screen) moves the recording to its window.
+      this.activeGameProc = (capture.area?.kind ?? 'monitor') === 'game' ? (this.game.isGame ? this.game.process : '') : null
       this.autoStarted = reason === 'auto'
       this.voice.start()
       this.applyVoiceCommands()
@@ -452,8 +459,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     if (changed && this.status.running && this.activeCapture && info.isGame && !this.long) {
       const next = this.effectiveCapture()
       const differs = (['fps', 'quality', 'resolutionScale'] as const).some((k) => next[k] !== this.activeCapture![k])
-      if (differs) {
-        this.log('game', `Switching to the ${s.profiles[info.process]?.name ?? 'default'} capture profile for ${info.name}`)
+      const areaChanged = this.activeGameProc !== null && info.process !== this.activeGameProc
+      if (differs || areaChanged) {
+        this.log('game', areaChanged ? `Switching the recording to ${info.name}` : `Switching to the ${s.profiles[info.process]?.name ?? 'default'} capture profile for ${info.name}`)
         await this.buffer.stop()
         await this.start(this.autoStarted ? 'auto' : 'manual')
       }
@@ -583,6 +591,24 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.log('error', `Recording keeps failing${this.game.isGame ? ` in ${this.game.name}` : ''}: ${why}. Clutch will try again in 5 minutes; Start recording tries now.`)
       this.emit('notice', { title: 'Clutch can\'t record right now', sub: 'Open Clutch to see why. It will try again in 5 minutes.', kind: 'info' })
     }
+  }
+
+  private stallCount = 0
+  /** The recorder is alive but hasn't finished a segment in a while: restart it, give up after three in a row. */
+  private async onStall(seconds: number, stderr: string) {
+    if (!this.status.running || this.starting || this.paused) return
+    const tail = stderr.split(/\r?\n/).filter((l) => /error|failed|invalid|lost|denied|timeout|dropping/i.test(l)).slice(-3).join(' | ')
+    this.stallCount++
+    this.log('error', `Recording stalled: no new video for ${seconds}s${tail ? ` (${tail})` : ''}. Restarting the recorder.`)
+    const reason = this.autoStarted ? 'auto' : 'manual'
+    await this.buffer.stop()
+    if (this.stallCount >= 3) {
+      this.stallCount = 0
+      this.noteStartFailure('the recorder keeps stalling')
+      this.emit('notice', { title: 'Recording stopped', sub: 'It kept stalling. Open Clutch for details.', kind: 'error' })
+      return
+    }
+    if (await this.start(reason)) this.emit('notice', { title: 'Recording restarted', sub: 'Clutch recovered from a stall', kind: 'info' })
   }
 
   /** The mic voice commands listen to: the first enabled mic source. */
@@ -769,7 +795,10 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       void this.autoTitle(clip)
       return clip
     } catch (e) {
-      this.log('error', e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      this.log('error', msg)
+      // The hotkey must never fail silently in game.
+      this.emit('notice', { title: 'Clip not saved', sub: msg.replace(/^Clip export failed: /, '').slice(0, 90), kind: 'error' })
     } finally {
       this.pendingRanges = this.pendingRanges.filter((r) => r !== range)
     }

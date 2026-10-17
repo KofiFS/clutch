@@ -7,6 +7,8 @@ import { detectEncoders, ffmpegPath, ffprobePath, lowerPriority, run } from './f
 import { AppAudioSource } from './appAudio'
 
 const SEG_SECONDS = 2
+/** No new segment for this long while running counts as a stalled recorder. */
+const STALL_MS = 9000
 const SYS_RATE = 48000
 const SYS_CHANNELS = 2
 const SYS_BYTES_PER_SEC = SYS_RATE * SYS_CHANNELS * 2
@@ -37,6 +39,8 @@ export interface BufferEvents {
   levels: [{ micDb: number; sysDb: number; sources: Record<string, number> }]
   /** A downscaled JPEG of the screen, emitted at the configured snapshot rate. */
   snapshot: [Buffer]
+  /** Alive but no segment finished for a while: the recorder should restart it. */
+  stall: [{ seconds: number; stderr: string }]
   log: [string]
 }
 
@@ -62,6 +66,13 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
   private appSources = new Map<string, AppAudioSource>()
   private appLevelTimer: NodeJS.Timeout | null = null
   private pendingSaves = 0
+  /** Start times of saves in progress: their segments are kept until they finish. */
+  private pendingHolds: number[] = []
+  private watchTimer: NodeJS.Timeout | null = null
+  private newestSeg = -1
+  private newestChangedAt = 0
+  private startedAtMs = 0
+  private stderrTail = ''
   private snapshotBuf: Buffer = Buffer.alloc(0)
   private micDb = -100
   private sourceLevels: Record<string, number> = {}
@@ -102,6 +113,13 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       this.restarts = []
     }
     fs.mkdirSync(this.segDir, { recursive: true })
+    // Segments left behind by an earlier run (a crash, an older version) must never end up in a
+    // clip or be taken for the newest segment. Held segments (paused long recording) stay.
+    const stale = Date.now() - (settings.bufferSeconds + 10) * 1000
+    for (const seg of this.listSegments()) {
+      const held = this.holdFromMs !== null && seg.birthMs >= this.holdFromMs - SEG_SECONDS * 2000
+      if (seg.birthMs < stale && !held) { try { fs.unlinkSync(seg.file) } catch { /* in use */ } }
+    }
     const existing = this.listSegments()
     this.segStartNumber = existing.length ? existing[existing.length - 1].n + 1 : 0
 
@@ -142,10 +160,10 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       }, 150)
     }
 
-    let stderrTail = ''
+    this.stderrTail = ''
     proc.stderr!.setEncoding('utf8')
     proc.stderr!.on('data', (chunk: string) => {
-      stderrTail = (stderrTail + chunk).slice(-4000)
+      this.stderrTail = (this.stderrTail + chunk).slice(-4000)
       for (const line of chunk.split(/\r?\n/)) {
         const m = line.match(/ametadata@m_([\w-]+) @ [^\]]+\] lavfi\.astats\.Overall\.RMS_level=(-?[\d.]+|-inf)/)
         if (m) {
@@ -164,7 +182,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       const wasRunning = this.running
       this.cleanup()
       if (wasRunning && !this.stopping) {
-        const err = `FFmpeg exited (code ${code}). ${stderrTail.split('\n').filter((l) => /error|invalid|not found|could not/i.test(l)).slice(-3).join(' | ')}`
+        const err = `FFmpeg exited (code ${code}). ${this.stderrTail.split('\n').filter((l) => /error|invalid|not found|could not/i.test(l)).slice(-3).join(' | ')}`
         this.emit('status', { running: false, error: err })
       } else {
         this.emit('status', { running: false })
@@ -175,6 +193,10 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     if (settings.systemAudio) this.startSystemAudioPump()
     this.startSnapshots()
     this.pruneTimer = setInterval(() => this.prune(), 5000)
+    this.startedAtMs = Date.now()
+    this.newestSeg = this.segStartNumber - 1
+    this.newestChangedAt = Date.now()
+    this.watchTimer = setInterval(() => this.checkStall(), 2000)
     this.emit('status', { running: true, encoder: this.encoder, resolution: this.resolution, fps: settings.fps })
   }
 
@@ -225,6 +247,8 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     this.running = false
     this.proc = null
     if (this.pruneTimer) clearInterval(this.pruneTimer)
+    if (this.watchTimer) clearInterval(this.watchTimer)
+    this.watchTimer = null
     if (this.sysTimer) clearInterval(this.sysTimer)
     if (this.snapTimer) clearInterval(this.snapTimer)
     this.snapTimer = null
@@ -458,10 +482,33 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     return segs.sort((a, b) => a.n - b.n)
   }
 
+  /** What FFmpeg last said on stderr (for stall reports). */
+  get lastStderr() {
+    return this.stderrTail
+  }
+
+  /**
+   * A recorder that is alive but not finishing segments (an input that went quiet, a capture
+   * source that died) looks healthy from the outside while nothing can be clipped: the newest
+   * segment just grows. Flag it so the recorder restarts.
+   */
+  private checkStall() {
+    if (!this.running || this.stopping) return
+    const n = this.listSegments().reduce((m, sg) => Math.max(m, sg.n), -1)
+    if (n !== this.newestSeg) { this.newestSeg = n; this.newestChangedAt = Date.now(); return }
+    if (Date.now() - this.startedAtMs > STALL_MS + 4000 && Date.now() - this.newestChangedAt > STALL_MS) {
+      this.newestChangedAt = Date.now() // one report per stall
+      this.emit('stall', { seconds: Math.round(STALL_MS / 1000), stderr: this.stderrTail })
+    }
+  }
+
   private prune() {
-    if (!this.settings || this.pendingSaves > 0) return
+    if (!this.settings) return
     const normal = Date.now() - (this.settings.bufferSeconds + 10) * 1000
-    const keepAfter = this.holdFromMs === null ? normal : Math.min(normal, this.holdFromMs - SEG_SECONDS * 2000)
+    let keepAfter = this.holdFromMs === null ? normal : Math.min(normal, this.holdFromMs - SEG_SECONDS * 2000)
+    // Saves in progress need their segments a little longer, but pruning must never stop
+    // altogether: a save that hangs would let the buffer folder grow without limit.
+    if (this.pendingHolds.length) keepAfter = Math.min(keepAfter, Math.min(...this.pendingHolds) - SEG_SECONDS * 2000)
     for (const seg of this.listSegments()) {
       if (seg.birthMs < keepAfter) {
         try { fs.unlinkSync(seg.file) } catch { /* in use */ }
@@ -503,6 +550,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
     const live = this.running
     if (!live && !req.allowStopped) throw new Error('Replay buffer is not running')
     this.pendingSaves++
+    this.pendingHolds.push(req.startMs)
     try {
       const readyAt = req.endMs + (SEG_SECONDS + 0.75) * 1000
       if (live && Date.now() < readyAt) await new Promise((r) => setTimeout(r, readyAt - Date.now()))
@@ -533,6 +581,7 @@ export class ReplayBuffer extends EventEmitter<BufferEvents> {
       return { file: req.outFile, actualStartMs }
     } finally {
       this.pendingSaves--
+      this.pendingHolds.splice(this.pendingHolds.indexOf(req.startMs), 1)
     }
   }
 }

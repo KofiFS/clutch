@@ -17,6 +17,7 @@ import { fromModel, smartReadLocal } from './importer/smart'
 import { MiniWidget } from './miniWidget'
 import { Updater } from './updater'
 import { detectMedal, LibrarySources } from './library/sources'
+import { initLog, logDir, logLine } from './log'
 import { baseName, outputDirFor } from './library'
 import { Compressor } from './library/compressor'
 import { OverlayToast } from './overlay'
@@ -202,7 +203,18 @@ function registerHotkey(s: Settings) {
 if (!app.requestSingleInstanceLock()) app.quit()
 app.on('second-instance', () => showWindow())
 
+// Problems are written to the log folder instead of killing the app with a dialog mid-game.
+process.on('uncaughtException', (e) => logLine('crash', `Uncaught exception: ${e?.stack ?? e}`))
+process.on('unhandledRejection', (e) => logLine('crash', `Unhandled rejection: ${(e as Error)?.stack ?? String(e)}`))
+app.on('render-process-gone', (_e, contents, d) => {
+  logLine('crash', `Window process gone: ${d.reason} (code ${d.exitCode})`)
+  if (contents === win?.webContents && d.reason !== 'clean-exit') win?.webContents.reload()
+})
+app.on('child-process-gone', (_e, d) => logLine('crash', `${d.type} process gone: ${d.reason} (code ${d.exitCode})`))
+
 app.whenReady().then(async () => {
+  initLog()
+  logLine('app', `Clutch ${app.getVersion()} starting · ${process.platform} ${process.getSystemVersion()} · Electron ${process.versions.electron}${app.isPackaged ? '' : ' · dev copy'}`)
   const dataDir = app.getPath('userData')
   settings = new SettingsStore()
   recorder = new Recorder(settings, dataDir)
@@ -397,6 +409,7 @@ app.whenReady().then(async () => {
     return recorder.status
   })
   ipcMain.handle('system:openExternal', (_e, url: string) => shell.openExternal(url))
+  ipcMain.handle('system:openLogs', () => shell.openPath(logDir()))
   ipcMain.handle('system:health', () => healthCheck(settings.get(), recorder.status))
   ipcMain.handle('system:testHotkey', (_e, accel: string) => {
     // Try registering without stealing the user's current hotkey.
