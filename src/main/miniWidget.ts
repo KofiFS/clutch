@@ -3,6 +3,8 @@ import { BrowserWindow, screen } from 'electron'
 /** Window sizes include an 8 px margin around the panel for its shadow. */
 const SIZE = { compact: { w: 332, h: 76 }, expanded: { w: 392, h: 420 } }
 const MARGIN = 16
+/** Default distance from the top: clear of a windowed game's title-bar buttons (its X sits in the top-right corner). */
+const TOP_OFFSET = 72
 
 export interface MiniWidgetOptions {
   url: string
@@ -89,7 +91,7 @@ export class MiniWidget {
       if (onScreen) return (this.anchor = saved)
     }
     const a = screen.getPrimaryDisplay().workArea
-    return (this.anchor = { right: a.x + a.width - MARGIN, top: a.y + MARGIN })
+    return (this.anchor = { right: a.x + a.width - MARGIN, top: a.y + TOP_OFFSET })
   }
 
   /** Place the window at the anchor with the current size, kept inside the screen it is on. */

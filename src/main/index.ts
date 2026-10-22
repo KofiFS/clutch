@@ -539,7 +539,11 @@ app.whenReady().then(async () => {
     return next
   })
   // Corner controller
-  ipcMain.handle('mini:expand', (_e, on?: boolean) => { mini?.setExpanded(on ?? !mini.isExpanded); return mini?.isExpanded ?? false })
+  ipcMain.handle('mini:expand', (_e, on?: boolean) => {
+    mini?.setExpanded(on ?? !mini.isExpanded)
+    logLine('mini', `expand -> ${mini?.isExpanded ?? false}${mini?.bounds ? ` at ${mini.bounds.x},${mini.bounds.y} ${mini.bounds.width}x${mini.bounds.height}` : ' (widget not visible)'}`)
+    return mini?.isExpanded ?? false
+  })
   ipcMain.handle('mini:openMain', () => showWindow('dashboard'))
   ipcMain.on('mini:drag', (_e, phase: 'start' | 'move' | 'end') => {
     if (phase === 'start') mini?.dragStart()
