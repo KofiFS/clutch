@@ -38,6 +38,14 @@ export interface RecorderEvents {
  * Coordinates the replay buffer, the triggers (hotkey / voice / vision), game detection and the library.
  * Every trigger ends up in `clipRange`, which cuts the clip and registers it.
  */
+/** After the recorded game's process ends, stop an auto-started recording this soon. */
+const GAME_GONE_STOP_MS = 20_000
+
+/** A game's splash/launcher window (small) rather than its game window. */
+function isSplashWindow(r: { w: number; h: number }): boolean {
+  return r.w < 1000 && r.h < 640
+}
+
 export class Recorder extends EventEmitter<RecorderEvents> {
   readonly buffer: ReplayBuffer
   readonly library: Library
@@ -63,6 +71,10 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   private autoStarted = false
   private starting = false
   private activeGameProc: string | null = null
+  /** Last time a whole-screen game recording looked for the game's window. */
+  private lastAreaTry = 0
+  /** When the game being recorded closed (its process ended), for a quick auto-stop. */
+  private gameGoneAt = 0
   /** When the last recording started and whether stop() ended it, to tell crashes from stops. */
   private startedAt = 0
   private stopping = false
@@ -286,7 +298,9 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.activeCapture = capture
       // "Game window" mode remembers which game it is recording, so a game that appears later
       // (the recording began on the whole screen) moves the recording to its window.
-      this.activeGameProc = (capture.area?.kind ?? 'monitor') === 'game' ? (this.game.isGame ? this.game.process : '') : null
+      const gameArea = !!(source.window || source.crop)
+      this.activeGameProc = (capture.area?.kind ?? 'monitor') === 'game' ? (this.game.isGame && gameArea ? this.game.process : '') : null
+      this.lastAreaTry = Date.now()
       this.autoStarted = reason === 'auto'
       this.voice.start()
       this.applyVoiceCommands()
@@ -379,6 +393,12 @@ export class Recorder extends EventEmitter<RecorderEvents> {
         this.log('info', `${name} window not found, recording the whole screen`)
         return { source: whole, label: `Full screen (${name} not open)` }
       }
+      // Many games open a small splash or launcher window first (Rocket League: 800x450). Recording
+      // it would lose the game when it closes; record the screen until the real window shows up.
+      if (isSplashWindow(r)) {
+        this.log('info', `${name} is still loading (${r.w}x${r.h} window), recording the whole screen until its game window opens`)
+        return { source: whole, label: `Full screen (${name} loading)` }
+      }
       // The monitor the window is on (by its center), for the fallback crop.
       const centerDip = screen.screenToDipPoint({ x: r.x + r.w / 2, y: r.y + r.h / 2 })
       const md = screen.getDisplayNearestPoint(centerDip)
@@ -430,7 +450,10 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     else if (this.stickyGame) {
       // Another (non-game) window has focus: stay on the game while it is still running.
       if (fg.watchedAlive) info = this.stickyGame.info
-      else this.stickyGame = null
+      else {
+        this.stickyGame = null
+        if (!this.gameGoneAt) this.gameGoneAt = Date.now()
+      }
     }
     // Also when the same app becomes (or stops being) a game, e.g. after "Treat as a game".
     const changed = info.process !== this.game.process || !!info.isGame !== !!this.game.isGame
@@ -440,7 +463,7 @@ export class Recorder extends EventEmitter<RecorderEvents> {
       this.emit('game', info)
       if (info.isGame) this.log('game', `${info.name} is in front`)
     }
-    if (info.isGame) this.lastGameSeenAt = Date.now()
+    if (info.isGame) { this.lastGameSeenAt = Date.now(); this.gameGoneAt = 0 }
 
     const blocked = this.recordingBlockedReason(s)
     const blockedChanged = blocked !== this.status.recordingBlocked
@@ -451,15 +474,26 @@ export class Recorder extends EventEmitter<RecorderEvents> {
     if (s.app.autoStart === 'games' && info.isGame && !blocked && !this.status.running && !this.starting && !this.paused && Date.now() >= this.autoFail.until) {
       this.log('game', `Starting recording for ${info.name}`)
       if (await this.start('auto')) this.emit('autoStarted')
+    } else if (this.autoStarted && (this.status.running || this.paused) && !this.long && !info.isGame && this.gameGoneAt && Date.now() - this.gameGoneAt > GAME_GONE_STOP_MS) {
+      // The game itself closed (not just alt-tabbed): no reason to keep recording the desktop.
+      this.log('info', 'Recording stopped - the game closed')
+      this.gameGoneAt = 0
+      await this.stop('manual')
     } else if (this.autoStarted && (this.status.running || this.paused) && s.app.autoStopMinutes > 0 && Date.now() - this.lastGameSeenAt > s.app.autoStopMinutes * 60_000) {
       await this.stop('auto')
     }
 
     // Per-game profile switch while running (never in the middle of a long recording)
-    if (changed && this.status.running && this.activeCapture && info.isGame && !this.long) {
+    if (this.status.running && this.activeCapture && info.isGame && !this.long && !this.starting) {
       const next = this.effectiveCapture()
-      const differs = (['fps', 'quality', 'resolutionScale'] as const).some((k) => next[k] !== this.activeCapture![k])
-      const areaChanged = this.activeGameProc !== null && info.process !== this.activeGameProc
+      const differs = changed && (['fps', 'quality', 'resolutionScale'] as const).some((k) => next[k] !== this.activeCapture![k])
+      let areaChanged = changed && !!this.activeGameProc && info.process !== this.activeGameProc
+      // Recording the whole screen while waiting for the game: switch once its real window exists.
+      if (!areaChanged && this.activeGameProc === '' && Date.now() - this.lastAreaTry > 10_000) {
+        this.lastAreaTry = Date.now()
+        const r = await getWindowRect(info.process).catch(() => null)
+        areaChanged = !!r && !r.minimized && !isSplashWindow(r)
+      }
       if (differs || areaChanged) {
         this.log('game', areaChanged ? `Switching the recording to ${info.name}` : `Switching to the ${s.profiles[info.process]?.name ?? 'default'} capture profile for ${info.name}`)
         await this.buffer.stop()
@@ -597,6 +631,14 @@ export class Recorder extends EventEmitter<RecorderEvents> {
   /** The recorder is alive but hasn't finished a segment in a while: restart it, give up after three in a row. */
   private async onStall(seconds: number, stderr: string) {
     if (!this.status.running || this.starting || this.paused) return
+    // Recording a game's window and the game closed: the capture froze because there is nothing
+    // left to capture. Stop instead of "recovering" onto the desktop.
+    if (this.autoStarted && this.activeGameProc && !this.long && (this.gameGoneAt || !this.game.isGame)) {
+      this.log('info', 'Recording stopped - the game closed')
+      this.gameGoneAt = 0
+      await this.stop('manual')
+      return
+    }
     const tail = stderr.split(/\r?\n/).filter((l) => /error|failed|invalid|lost|denied|timeout|dropping/i.test(l)).slice(-3).join(' | ')
     this.stallCount++
     this.log('error', `Recording stalled: no new video for ${seconds}s${tail ? ` (${tail})` : ''}. Restarting the recorder.`)
