@@ -1,4 +1,5 @@
 import { BrowserWindow, screen } from 'electron'
+import { lockWindow } from './security'
 
 /** Window sizes include an 8 px margin around the panel for its shadow. */
 const SIZE = { compact: { w: 332, h: 76 }, expanded: { w: 392, h: 420 } }
@@ -66,13 +67,13 @@ export class MiniWidget {
       alwaysOnTop: true,
       show: false,
       title: 'Clutch recording controls',
-      webPreferences: { preload: this.opts.preload, sandbox: false, contextIsolation: true, backgroundThrottling: false }
+      webPreferences: { preload: this.opts.preload, sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, backgroundThrottling: false }
     })
     // Visible to the user, invisible to every screen recorder, Clutch's own included.
     win.setContentProtection(true)
     win.setAlwaysOnTop(true, 'screen-saver')
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    lockWindow(win.webContents, (u) => u.split('#')[0] === this.opts.url.split('#')[0], false)
     void win.loadURL(this.opts.url)
     win.on('closed', () => { this.win = null })
     this.win = win

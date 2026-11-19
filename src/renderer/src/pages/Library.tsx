@@ -49,7 +49,8 @@ export default function Library() {
   }, [libraryPreset, setLibraryPreset])
 
   const reload = useCallback(() => {
-    void window.cf.library.query({ text, game: game || undefined, trigger, favoritesOnly: fav, sort, trashed: view === 'trash', source: source || undefined }).then(setClips)
+    // While searching, "Newest first" becomes "Best match" (the most relevant clips first).
+    void window.cf.library.query({ text, game: game || undefined, trigger, favoritesOnly: fav, sort: text.trim() && sort === 'newest' ? 'relevance' : sort, trashed: view === 'trash', source: source || undefined }).then(setClips)
     void window.cf.library.games().then(setGames)
   }, [text, game, trigger, fav, sort, view, source])
   useEffect(reload, [reload, libraryVersion])
@@ -200,7 +201,7 @@ export default function Library() {
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-64">
           <Search size={15} className="absolute left-3 top-3 text-ink-3" />
-          <input ref={searchRef} className="input pl-9 pr-10" placeholder="Search titles, games, events, tags" value={text} onChange={(e) => setText(e.target.value)} />
+          <input ref={searchRef} className="input pl-9 pr-10" placeholder="Search: funny minecraft last week, clutch, favorites…" title="Not case sensitive, forgives typos, and understands today, yesterday, last week, favorites, long and short." value={text} onChange={(e) => setText(e.target.value)} />
           <span className="absolute right-2.5 top-2"><Kbd>/</Kbd></span>
         </div>
         <div className="inline-flex p-1 rounded-[10px] bg-surface-2 border border-line gap-0.5">
@@ -217,7 +218,7 @@ export default function Library() {
           </select>
         )}
         <select className="input w-36" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort">
-          <option value="newest">Newest first</option>
+          <option value="newest">{text.trim() ? 'Best match' : 'Newest first'}</option>
           <option value="oldest">Oldest first</option>
           <option value="longest">Longest</option>
           <option value="largest">Largest file</option>

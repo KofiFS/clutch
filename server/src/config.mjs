@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 
 /** Minimal .env loader (KEY=value lines). */
 function loadDotEnv(file) {
@@ -16,6 +17,8 @@ const env = (k, d = '') => process.env[k] ?? d
 
 export const config = {
   port: Number(env('PORT', '8787')),
+  // Network address to listen on. Forced to 127.0.0.1 with DEV_LOGIN so the password-less login never reaches the network.
+  host: env('DEV_LOGIN', '0') === '1' ? '127.0.0.1' : env('HOST', '0.0.0.0'),
   publicUrl: env('PUBLIC_URL', 'http://127.0.0.1:8787').replace(/\/$/, ''),
   jwtSecret: env('JWT_SECRET', ''),
   devLogin: env('DEV_LOGIN', '0') === '1',
@@ -38,7 +41,15 @@ export const config = {
   anthropicKey: env('ANTHROPIC_API_KEY'),
   smartReadModel: env('SMART_READ_MODEL', 'claude-opus-5-5'),
   // Screen watching runs often, so it uses a small, cheap model.
-  visionModel: env('VISION_MODEL', 'claude-haiku-5-5')
+  visionModel: env('VISION_MODEL', 'claude-haiku-5-5'),
+  // Hard ceiling on Anthropic calls per day for the whole server, whatever the per-user limits say.
+  aiDailyCap: Number(env('AI_DAILY_CAP', '3000'))
+}
+
+const loopbackUrl = (u) => { try { return ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(u).hostname) } catch { return false } }
+if (config.devLogin && !loopbackUrl(config.publicUrl)) {
+  console.error('DEV_LOGIN=1 lets anyone sign in by typing a name. It only runs when PUBLIC_URL is a 127.0.0.1/localhost address.')
+  process.exit(1)
 }
 
 if (!config.jwtSecret || config.jwtSecret.startsWith('change-me')) {
@@ -46,7 +57,8 @@ if (!config.jwtSecret || config.jwtSecret.startsWith('change-me')) {
     console.error('Set JWT_SECRET to a long random string (see .env.example).')
     process.exit(1)
   }
-  config.jwtSecret = config.jwtSecret || 'dev-only-secret-' + Math.random().toString(36).slice(2)
+  // Never keep the example value from .env.example: anyone could forge tokens with it.
+  config.jwtSecret = 'dev-only-secret-' + randomBytes(32).toString('hex')
   console.warn('[clutch-cloud] Using a temporary JWT secret (DEV_LOGIN=1). Tokens will not survive a restart.')
 }
 fs.mkdirSync(config.dataDir, { recursive: true })

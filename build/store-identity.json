@@ -1,0 +1,8 @@
+{
+  "_readme": "From Partner Center > Apps and games > Clutch Clips > Product management > Product identity. displayName must match the name reserved in Partner Center (\"Clutch\" was taken); inside the app it still says Clutch.",
+  "identityName": "ShangkoCo.ClutchClips",
+  "publisher": "CN=44BF9012-53AE-43D3-B3F5-DE8438D8F0B9",
+  "publisherDisplayName": "Shangko Co",
+  "displayName": "Clutch Clips",
+  "storeId": "9NT878TMXVMR"
+}

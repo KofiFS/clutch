@@ -8,3 +8,4 @@ server/.env
 resources/ffmpeg
 *.tsbuildinfo
 scripts/benchmark-*.json
+test-results/

@@ -23,17 +23,13 @@ const Verdict = z.object({
   secondsAgo: z.number().min(0).max(20)
 })
 
+import { takeAiSlot } from './limits.mjs'
+
 export const visionEnabled = () => !!config.anthropicKey
 
-const used = new Map()
-/** Checks left today for this user. In memory: a restart only ever errs on the generous side. */
-export function visionChecksLeft(userId, limit) {
-  const key = `${userId}:${new Date().toISOString().slice(0, 10)}`
-  return { key, left: Math.max(0, limit - (used.get(key) ?? 0)) }
-}
-export function countVisionCheck(key) {
-  used.set(key, (used.get(key) ?? 0) + 1)
-  if (used.size > 50_000) used.clear()
+/** Takes one of today's screen checks for this user (and one from the server-wide cap). Null when none are left. */
+export function takeVisionCheck(userId, limit) {
+  return takeAiSlot('vision', userId, limit)
 }
 
 let client = null

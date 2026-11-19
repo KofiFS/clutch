@@ -10,7 +10,8 @@
   },
   "scripts": {
     "start": "node --no-warnings src/index.mjs",
-    "dev": "node --no-warnings --watch src/index.mjs"
+    "dev": "node --no-warnings --watch src/index.mjs",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

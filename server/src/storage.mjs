@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash, createHmac } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { config } from './config.mjs'
 import { sign } from './jwt.mjs'
@@ -20,7 +20,11 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex')
 const hmac = (k, s) => createHmac('sha256', k).update(s).digest()
 const rfc3986 = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase())
 
-function presign(method, key, expiresSeconds = 900) {
+/**
+ * `signed`: extra headers the request must carry exactly (e.g. Content-Length and Content-Type for uploads).
+ * `query`: extra query parameters (e.g. response-content-type for downloads).
+ */
+function presign(method, key, expiresSeconds = 900, signed = {}, query = {}) {
   const { endpoint, region, bucket, accessKeyId, secretAccessKey } = config.s3
   const url = new URL(`${endpoint.replace(/\/$/, '')}/${bucket}/${key.split('/').map(rfc3986).join('/')}`)
   const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -31,10 +35,13 @@ function presign(method, key, expiresSeconds = 900) {
     'X-Amz-Credential': `${accessKeyId}/${scope}`,
     'X-Amz-Date': amzDate,
     'X-Amz-Expires': String(expiresSeconds),
-    'X-Amz-SignedHeaders': 'host'
+    ...query
   }
+  const headers = { host: url.host, ...Object.fromEntries(Object.entries(signed).map(([k, v]) => [k.toLowerCase(), String(v).trim()])) }
+  const names = Object.keys(headers).sort()
+  params['X-Amz-SignedHeaders'] = names.join(';')
   const qs = Object.keys(params).sort().map((k) => `${rfc3986(k)}=${rfc3986(params[k])}`).join('&')
-  const canonical = [method, url.pathname, qs, `host:${url.host}\n`, 'host', 'UNSIGNED-PAYLOAD'].join('\n')
+  const canonical = [method, url.pathname, qs, names.map((n) => `${n}:${headers[n]}\n`).join(''), names.join(';'), 'UNSIGNED-PAYLOAD'].join('\n')
   const toSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256(canonical)].join('\n')
   const kSign = hmac(hmac(hmac(hmac('AWS4' + secretAccessKey, date), region), 's3'), 'aws4_request')
   return `${url.origin}${url.pathname}?${qs}&X-Amz-Signature=${createHmac('sha256', kSign).update(toSign).digest('hex')}`
@@ -47,9 +54,12 @@ async function s3Delete(key) {
 // ---------------- driver API ----------------
 export const storage = {
   /** Where the desktop app should PUT the bytes. */
-  uploadUrl(key, contentType, maxBytes) {
-    if (config.storage === 's3') return { url: presign('PUT', key), headers: { 'Content-Type': contentType } }
-    const ticket = sign({ key, max: maxBytes }, { kind: 'upload', ttlSeconds: 3600 })
+  uploadUrl(key, contentType, exactBytes, clipId) {
+    if (config.storage === 's3') {
+      const headers = { 'Content-Type': contentType, 'Content-Length': String(exactBytes) }
+      return { url: presign('PUT', key, 900, headers), headers }
+    }
+    const ticket = sign({ key, max: exactBytes, clip: clipId }, { kind: 'upload', ttlSeconds: 3600 })
     return { url: `${config.publicUrl}/upload/${encodeURIComponent(ticket)}`, headers: { 'Content-Type': contentType } }
   },
   /** Size of an uploaded object, or -1 if missing. */
@@ -65,37 +75,47 @@ export const storage = {
     if (config.storage === 's3') return s3Delete(key)
     try { fs.unlinkSync(path.join(filesDir, safeKey(key))) } catch { /* gone */ }
   },
-  /** Local driver only: write an upload stream to disk, refusing more than `max` bytes. */
-  async writeLocal(key, req, max) {
+  /**
+   * Local driver only: write an upload stream to disk, refusing more than `max` bytes.
+   * `stillWanted` is checked right before the file is moved into place (same tick, so /complete
+   * can't run in between): a stream still open after its clip was completed or deleted is dropped.
+   */
+  async writeLocal(key, req, max, stillWanted = () => true) {
     const file = path.join(filesDir, safeKey(key))
     fs.mkdirSync(path.dirname(file), { recursive: true })
-    const tmp = `${file}.part`
+    const tmp = `${file}.${randomBytes(6).toString('hex')}.part`
     let n = 0
     await new Promise((resolve, reject) => {
       const out = fs.createWriteStream(tmp)
       req.on('data', (chunk) => {
         n += chunk.length
-        if (n > max) { req.destroy(); out.destroy(); reject(Object.assign(new Error('too large'), { status: 413 })) }
+        if (n > max) { req.destroy(); out.destroy(); fs.rm(tmp, { force: true }, () => undefined); reject(Object.assign(new Error('too large'), { status: 413 })) }
       })
       req.pipe(out)
       out.on('finish', resolve)
       out.on('error', reject)
       req.on('error', reject)
-    })
+    }).catch((e) => { fs.rmSync(tmp, { force: true }); throw e })
+    if (!stillWanted()) {
+      fs.rmSync(tmp, { force: true })
+      throw Object.assign(new Error('Upload link already used'), { status: 409 })
+    }
     fs.renameSync(tmp, file)
     return n
   },
   /** Serve an object to a browser: range-capable stream (local) or a short-lived redirect (s3). */
   serve(key, req, res, contentType) {
     if (config.storage === 's3') {
-      res.writeHead(302, { Location: presign('GET', key, 3600), 'Cache-Control': 'private, max-age=3000' })
+      // Always served as the media type it should be, never as whatever was uploaded (no HTML on the bucket's domain).
+      const query = { 'response-content-type': contentType, 'response-content-disposition': contentType.startsWith('video/') ? 'inline; filename="clip.mp4"' : 'inline; filename="thumb.jpg"' }
+      res.writeHead(302, { Location: presign('GET', key, 3600, {}, query), 'Cache-Control': 'private, max-age=3000' })
       return res.end()
     }
     const file = path.join(filesDir, safeKey(key))
     let st
     try { st = fs.statSync(file) } catch { res.writeHead(404); return res.end('not found') }
     const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '')
-    const head = { 'Content-Type': contentType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600' }
+    const head = { 'Content-Type': contentType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; media-src 'self'; img-src 'self'; sandbox" }
     if (range && (range[1] || range[2])) {
       let start = range[1] ? Number(range[1]) : Math.max(0, st.size - Number(range[2]))
       let end = range[1] && range[2] ? Math.min(Number(range[2]), st.size - 1) : st.size - 1
