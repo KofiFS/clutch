@@ -35,7 +35,8 @@ await build({
       publisher: id.publisher,
       publisherDisplayName: id.publisherDisplayName,
       applicationId: 'Clutch',
-      displayName: 'Clutch',
+      // The Store name (must match the reservation); the app itself still calls itself Clutch.
+      displayName: id.displayName ?? 'Clutch',
       backgroundColor: 'transparent',
       showNameOnTiles: false,
       languages: ['en-US'],

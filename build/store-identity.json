@@ -1,6 +1,8 @@
 {
-  "_readme": "Copy these three values from Partner Center > Apps and games > Clutch > Product management > Product identity, after reserving the name. Until then the package builds for local testing only and the Store will reject it.",
-  "identityName": "ShangkoCo.Clutch",
-  "publisher": "CN=00000000-0000-0000-0000-000000000000",
-  "publisherDisplayName": "Shangko Co"
+  "_readme": "From Partner Center > Apps and games > Clutch Clips > Product management > Product identity. displayName must match the name reserved in Partner Center (\"Clutch\" was taken); inside the app it still says Clutch.",
+  "identityName": "ShangkoCo.ClutchClips",
+  "publisher": "CN=44BF9012-53AE-43D3-B3F5-DE8438D8F0B9",
+  "publisherDisplayName": "Shangko Co",
+  "displayName": "Clutch Clips",
+  "storeId": "9NT878TMXVMR"
 }
