@@ -3,7 +3,12 @@ import type { Credentials } from 'google-auth-library'
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
-import { shell } from 'electron'
+import { safeStorage } from 'electron'
+import { randomBytes } from 'node:crypto'
+import { openExternalSafe } from '../security'
+
+/** Marks an encrypted token file (older versions wrote plain JSON, which is still read). */
+const ENC_MAGIC = Buffer.from('CLUTCHENC1')
 
 export interface YouTubeUploadInput {
   file: string
@@ -48,11 +53,17 @@ export class YouTubeUploader {
   }
 
   private loadTokens(): Credentials {
-    try { return JSON.parse(fs.readFileSync(this.tokenFile, 'utf8')) } catch { return {} }
+    try {
+      const raw = fs.readFileSync(this.tokenFile)
+      if (raw.subarray(0, ENC_MAGIC.length).equals(ENC_MAGIC)) return JSON.parse(safeStorage.decryptString(raw.subarray(ENC_MAGIC.length)))
+      return JSON.parse(raw.toString('utf8'))
+    } catch { return {} }
   }
 
   private saveTokens(t: Credentials) {
-    fs.writeFileSync(this.tokenFile, JSON.stringify(t, null, 2))
+    // Refresh tokens can upload to the user's channel: encrypted with Windows DPAPI when available.
+    const json = JSON.stringify(t)
+    fs.writeFileSync(this.tokenFile, safeStorage.isEncryptionAvailable() ? Buffer.concat([ENC_MAGIC, safeStorage.encryptString(json)]) : json)
   }
 
   /** Opens the browser for consent and waits for Google to redirect back to a local port. */
@@ -63,9 +74,12 @@ export class YouTubeUploader {
     const port = (server.address() as { port: number }).port
     const redirectUri = `http://127.0.0.1:${port}/callback`
     const client = this.makeClient(redirectUri)
+    // Ties the answer to this sign-in, so a link someone else started can't connect their channel.
+    const state = randomBytes(24).toString('base64url')
     const url = client.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
+      state,
       scope: ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly']
     })
 
@@ -74,15 +88,16 @@ export class YouTubeUploader {
       server.on('request', (req, res) => {
         const u = new URL(req.url ?? '/', redirectUri)
         if (u.pathname !== '/callback') { res.statusCode = 404; res.end(); return }
-        const c = u.searchParams.get('code')
-        const err = u.searchParams.get('error')
+        const okState = u.searchParams.get('state') === state
+        const c = okState ? u.searchParams.get('code') : null
+        const err = okState ? u.searchParams.get('error') : 'this sign-in link was not started by Clutch'
         res.setHeader('Content-Type', 'text/html')
-        res.end(`<html><body style="font-family:sans-serif;background:#0f1115;color:#eee;display:grid;place-items:center;height:100vh"><h2>${c ? 'Clutch is connected to YouTube. You can close this tab.' : 'Sign-in failed: ' + err}</h2></body></html>`)
+        res.end(`<html><body style="font-family:sans-serif;background:#0f1115;color:#eee;display:grid;place-items:center;height:100vh"><h2>${c ? 'Clutch is connected to YouTube. You can close this tab.' : 'Sign-in failed: ' + String(err ?? 'unknown').replace(/[<>&"']/g, '')}</h2></body></html>`)
         clearTimeout(timeout)
         server.close()
         c ? resolve(c) : reject(new Error(err ?? 'No code returned'))
       })
-      shell.openExternal(url)
+      void openExternalSafe(url)
     })
 
     const { tokens } = await client.getToken(code)

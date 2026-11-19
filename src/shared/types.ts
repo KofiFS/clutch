@@ -162,6 +162,33 @@ export interface CloudSettings {
   backupFavorites: boolean
 }
 
+/** "Your cloud": copies of clips in a folder the user's own cloud app syncs. No Clutch account involved. */
+export interface OwnCloudSettings {
+  enabled: boolean
+  /** The synced folder (e.g. G:\My Drive, the OneDrive folder); clips go in a Clutch folder inside it. */
+  folder: string
+  provider: CloudFolder['provider'] | ''
+  /** all = every new clip, favorites = clips you favorite, manual = only the "Save to my cloud" button. */
+  mode: 'all' | 'favorites' | 'manual'
+  /** When automatic copying was turned on ("all" only copies clips from then on). */
+  enabledSince?: number
+}
+
+export interface CloudFolder {
+  provider: 'google' | 'onedrive' | 'dropbox' | 'icloud' | 'folder'
+  label: string
+  path: string
+}
+
+export interface OwnCloudState {
+  enabled: boolean
+  folder: string
+  queued: number
+  current?: { clipId: string; title: string; progress: number }
+  savedCount: number
+  lastError?: string
+}
+
 export interface PlanFeatures {
   shareLinks: boolean
   cloudBackup: boolean
@@ -320,6 +347,7 @@ export interface Settings {
   voiceCommands: VoiceCommandSettings
   upload: UploadSettings
   cloud: CloudSettings
+  ownCloud: OwnCloudSettings
   discord: DiscordSettings
   hype: HypeRules
   ai: AISettings
@@ -564,11 +592,14 @@ export const DEFAULT_SETTINGS: Settings = {
     windowGlass: false,
     launchAtLogin: false,
     trayHintShown: false,
-    showAds: true,
+    // Off until the user turns it on: Clutch never shows sponsored content by default.
+    showAds: false,
     miniWidget: true,
     miniWidgetAnchor: null
   },
-  cloud: { serverUrl: OFFICIAL_CLOUD_URL, backupFavorites: true },
+  // Nothing is uploaded to Clutch's servers unless the user turns backup on.
+  cloud: { serverUrl: OFFICIAL_CLOUD_URL, backupFavorites: false },
+  ownCloud: { enabled: false, folder: '', provider: '', mode: 'favorites' },
   blocklist: [],
   extraGames: [],
   libraries: [],

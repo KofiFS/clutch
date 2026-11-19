@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events'
+import { isDeletableVideo } from '../security'
+import { ClipSearch } from './search'
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -12,7 +14,8 @@ export interface LibraryQuery {
   trigger?: TriggerSource | 'all'
   favoritesOnly?: boolean
   tag?: string
-  sort?: 'newest' | 'oldest' | 'longest' | 'largest'
+  /** relevance: best search match first (only with text). */
+  sort?: 'newest' | 'oldest' | 'longest' | 'largest' | 'relevance'
   /** Include trashed clips (only). */
   trashed?: boolean
   /** 'clutch' = recorded by Clutch, otherwise a LibrarySource id. Unset = everything. */
@@ -52,6 +55,8 @@ export class Library extends EventEmitter<{ change: [] }> {
   /** Files from other libraries the user removed from Clutch, so a rescan doesn't bring them back. */
   private hidden = new Set<string>()
   private saveTimer: NodeJS.Timeout | null = null
+  /** Search index, rebuilt on the next search after the library changes. */
+  private searchIndex: ClipSearch | null = null
 
   constructor(private dataDir: string) {
     super()
@@ -87,6 +92,7 @@ export class Library extends EventEmitter<{ change: [] }> {
 
   private save() {
     if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null }
+    this.searchIndex = null
     this.writeFiles(this.clips.filter((c) => c.source))
     this.emit('change')
   }
@@ -105,12 +111,15 @@ export class Library extends EventEmitter<{ change: [] }> {
   /** True when Clutch may delete this file: it's Clutch's own clip and not inside another library. */
   private mayDelete(c: Clip): boolean {
     if (c.source) return false
+    // Only video files: an index entry pointing at anything else is never deleted.
+    if (!isDeletableVideo(c.file)) return false
     const f = fileKey(c.file)
     return !this.protectedRoots.some((r) => f.startsWith(r))
   }
 
   /** Coalesce many saves (a library scan adds clips one by one). */
   private saveSoon() {
+    this.searchIndex = null
     if (this.saveTimer) return
     this.saveTimer = setTimeout(() => this.save(), 1500)
   }
@@ -234,9 +243,13 @@ export class Library extends EventEmitter<{ change: [] }> {
     if (q.trigger && q.trigger !== 'all') out = out.filter((c) => c.trigger === q.trigger)
     if (q.favoritesOnly) out = out.filter((c) => c.favorite)
     if (q.tag) out = out.filter((c) => c.tags.includes(q.tag!))
-    if (q.text) {
-      const t = q.text.toLowerCase()
-      out = out.filter((c) => [c.title, c.game, c.event ?? '', ...c.tags].join(' ').toLowerCase().includes(t))
+    // Local search engine: case-insensitive, typo tolerant, plain-English dates and filters.
+    let rank: Map<string, number> | null = null
+    if (q.text?.trim()) {
+      this.searchIndex ??= new ClipSearch(this.clips)
+      rank = new Map(this.searchIndex.search(q.text).map((h, i) => [h.id, i]))
+      out = out.filter((c) => rank!.has(c.id))
+      if (!q.sort || q.sort === 'relevance') return out.sort((a, b) => rank!.get(a.id)! - rank!.get(b.id)!)
     }
     const sorters: Record<string, (a: Clip, b: Clip) => number> = {
       newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
@@ -244,7 +257,7 @@ export class Library extends EventEmitter<{ change: [] }> {
       longest: (a, b) => b.durationSec - a.durationSec,
       largest: (a, b) => b.sizeBytes - a.sizeBytes
     }
-    return out.sort(sorters[q.sort ?? 'newest'])
+    return out.sort(sorters[q.sort && q.sort !== 'relevance' ? q.sort : 'newest'])
   }
 
   /** Register a freshly exported mp4: probe it, build a thumbnail, add to the index. */

@@ -4,6 +4,7 @@ import type { Clip } from '../../../shared/types'
 import { useStore } from '../lib/store'
 import { useToast } from './Toasts'
 import { Field, Progress } from './ui'
+import { OwnCloudBlock } from './OwnCloud'
 
 /** Per-clip upload editor: title/description/tags/privacy prefilled from the templates, upload now or schedule. */
 export function SharePanel({ clip }: { clip: Clip }) {
@@ -50,7 +51,8 @@ export function SharePanel({ clip }: { clip: Clip }) {
 
   return (
     <div className="space-y-4">
-      <CloudShareBlock clip={clip} />
+      <OwnCloudBlock clip={clip} />
+      <div className="pt-4 border-t border-line"><CloudShareBlock clip={clip} /></div>
       <div className="pt-4 border-t border-line"><DiscordBlock clip={clip} /></div>
       <div className="flex items-center gap-2 text-sm pt-4 border-t border-line">
         <span className="w-8 h-8 rounded-lg bg-[#ff0000]/15 text-[#ff4d4d] grid place-items-center"><Youtube size={16} /></span>

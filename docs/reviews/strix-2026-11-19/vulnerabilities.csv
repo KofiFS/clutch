@@ -1,0 +1,14 @@
+id,title,severity,timestamp,file
+vuln-0006,PowerShell command injection via audio-source process name lets a compromised renderer run arbitrary commands in the main process,HIGH,2026-11-19 17:04:32 UTC,vulnerabilities/vuln-0006.md
+vuln-0001,"DEV_LOGIN loopback guard only checks PUBLIC_URL; server still listens on all interfaces, allowing unauthenticated sign-in as any account from the network",MEDIUM,2026-11-19 17:03:07 UTC,vulnerabilities/vuln-0001.md
+vuln-0002,CVE-2026-70601 in electron 37.10.3 (context isolation bypass via Function.prototype.bind hijack),MEDIUM,2026-11-19 17:03:36 UTC,vulnerabilities/vuln-0002.md
+vuln-0005,CVE-2026-70610 in electron 37.10.3 (contextBridge object copy honors prototype setters),MEDIUM,2026-11-19 17:04:16 UTC,vulnerabilities/vuln-0005.md
+vuln-0010,Storage quota bypass via in-flight upload overwriting a completed clip (local storage driver),MEDIUM,2026-11-19 17:05:38 UTC,vulnerabilities/vuln-0010.md
+vuln-0011,"Cloud session token is sent to whatever server URL settings:set supplies, letting a compromised renderer exfiltrate the main-process-only token",MEDIUM,2026-11-19 17:05:49 UTC,vulnerabilities/vuln-0011.md
+vuln-0012,"Unauthenticated, unlimited ad click and impression inflation for real ad ids",MEDIUM,2026-11-19 17:10:34 UTC,vulnerabilities/vuln-0012.md
+vuln-0013,Renderer can launch arbitrary files or programs via shell.openPath using settings:set-controlled library and clips-folder paths,MEDIUM,2026-11-19 17:11:37 UTC,vulnerabilities/vuln-0013.md
+vuln-0003,CVE-2026-70604 in electron 37.10.3 (custom protocol with supportFetchAPI but without corsEnabled allows cross-origin reads),LOW,2026-11-19 17:03:50 UTC,vulnerabilities/vuln-0003.md
+vuln-0004,CVE-2026-34768 in electron 37.10.3 (unquoted executable path in app.setLoginItemSettings on Windows),LOW,2026-11-19 17:04:04 UTC,vulnerabilities/vuln-0004.md
+vuln-0007,CVE-2026-34451 in @anthropic-ai/sdk 0.80.0 (memory tool path validation sandbox escape),INFO,2026-11-19 17:04:35 UTC,vulnerabilities/vuln-0007.md
+vuln-0008,CVE-2026-41686 in @anthropic-ai/sdk 0.80.0 (insecure default file permissions in local filesystem memory tool),INFO,2026-11-19 17:04:46 UTC,vulnerabilities/vuln-0008.md
+vuln-0009,"CVE-2023-54404 in zod 3.25.76 (memory exhaustion validating large arrays, per GitHub advisory range)",INFO,2026-11-19 17:04:58 UTC,vulnerabilities/vuln-0009.md

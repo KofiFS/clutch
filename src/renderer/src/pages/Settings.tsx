@@ -11,6 +11,7 @@ import { AccountSection } from '../components/Account'
 import { ImportSettings } from '../components/ImportSettings'
 import { SetupChecklist } from '../components/SetupChecklist'
 import { Libraries } from '../components/Libraries'
+import { OwnCloudSettings } from '../components/OwnCloud'
 import { useToast } from '../components/Toasts'
 import { Badge, Field, LevelMeter, Section, Segmented, Slider, Toggle } from '../components/ui'
 
@@ -86,6 +87,8 @@ export default function Settings() {
       <StorageSettings />
 
       <Libraries />
+
+      <OwnCloudSettings />
 
       <Section title="Quality" icon={<Gauge size={16} />} desc={encoders ? `Working encoders on this PC: ${encoders.available.join(', ')}` : 'Detecting encoders…'} right={<button className="btn-ghost text-sm" onClick={() => setAdvanced(!advanced)}>{advanced ? 'Hide advanced' : 'Advanced'}</button>}>
         <div className="grid grid-cols-4 gap-3">
@@ -460,7 +463,7 @@ function StartWithWindows() {
       checked={settings.app.launchAtLogin}
       onChange={(launchAtLogin) => void save({ app: { ...settings.app, launchAtLogin } })}
       label="Start with Windows"
-      hint={available === false ? 'Only available on Windows.' : 'Opens hidden in the tray when you sign in, like Medal, so it is ready before your first game.'}
+      hint={available === false ? "Not available in this version of Clutch (the Microsoft Store version can't add itself to Windows startup yet)." : 'Opens hidden in the tray when you sign in, like Medal, so it is ready before your first game.'}
     />
   )
 }

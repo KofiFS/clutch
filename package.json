@@ -13,7 +13,11 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "dist": "electron-vite build && node scripts/dist.mjs",
-    "release": "electron-vite build && node scripts/dist.mjs --publish"
+    "release": "electron-vite build && node scripts/dist.mjs --publish",
+    "test:unit": "node --experimental-strip-types --no-warnings --test \"test/unit/*.test.ts\"",
+    "test:e2e": "electron-vite build && playwright test",
+    "test": "npm run typecheck && npm run test:unit && npm run test:e2e",
+    "dist:store": "electron-vite build && node scripts/dist-store.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -24,12 +28,13 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/vite": "^4.1.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.5.0",
-    "electron": "^37.0.0",
+    "electron": "^42.11.18",
     "electron-builder": "^26.0.0",
     "electron-vite": "^4.0.0",
     "lucide-react": "^0.525.0",
@@ -101,6 +106,14 @@
       "owner": "KofiFS",
       "repo": "clutch",
       "releaseType": "draft"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
     }
   },
   "productName": "Clutch",

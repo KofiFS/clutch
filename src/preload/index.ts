@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { CloudFolder, OwnCloudSettings, OwnCloudState } from '../shared/types'
 import type { AccountState, ActivityEvent, AdCard, BufferStatus, Clip, EditOptions, GameInfo, ShrinkProgress, GameSummary, HealthItem, ImportChange, ImportResult, MonitorInfo, LibraryInfo, Platform, RunningApp, Settings, UpdateState, UploadRecord } from '../shared/types'
 
 export interface LibraryQuery {
@@ -7,7 +8,7 @@ export interface LibraryQuery {
   trigger?: string
   favoritesOnly?: boolean
   tag?: string
-  sort?: 'newest' | 'oldest' | 'longest' | 'largest'
+  sort?: 'newest' | 'oldest' | 'longest' | 'largest' | 'relevance'
   trashed?: boolean
   /** 'clutch' = recorded by Clutch, otherwise a library id. */
   source?: string
@@ -21,7 +22,7 @@ export interface EnqueueOpts {
   privacy?: 'private' | 'unlisted' | 'public'
 }
 
-type Channel = 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress' | 'shrink-progress' | 'libraries' | 'voice-heard'
+type Channel = 'own-cloud' | 'status' | 'activity' | 'library-changed' | 'uploads-changed' | 'clip-saved' | 'game' | 'upload-done' | 'clip-of-the-day' | 'open-clip' | 'settings-changed' | 'navigate' | 'levels' | 'account' | 'cloud-progress' | 'open-pro' | 'mini-expanded' | 'update' | 'editor-progress' | 'shrink-progress' | 'libraries' | 'voice-heard'
 
 const api = {
   settings: {
@@ -53,6 +54,15 @@ const api = {
     checkout: (): Promise<void> => ipcRenderer.invoke('account:checkout'),
     portal: (): Promise<void> => ipcRenderer.invoke('account:portal'),
     devPlan: (plan: 'free' | 'pro'): Promise<void> => ipcRenderer.invoke('account:devPlan', plan)
+  },
+  ownCloud: {
+    detect: (): Promise<{ folders: CloudFolder[]; apps: Record<string, { name: string; url: string }> }> => ipcRenderer.invoke('ownCloud:detect'),
+    state: (): Promise<OwnCloudState> => ipcRenderer.invoke('ownCloud:state'),
+    savedFor: (clipId: string): Promise<string | null> => ipcRenderer.invoke('ownCloud:savedFor', clipId),
+    save: (ids: string[]): Promise<number> => ipcRenderer.invoke('ownCloud:save', ids),
+    open: (): Promise<void> => ipcRenderer.invoke('ownCloud:open'),
+    pickFolder: (): Promise<string | null> => ipcRenderer.invoke('ownCloud:pickFolder'),
+    set: (patch: Partial<OwnCloudSettings>): Promise<OwnCloudState> => ipcRenderer.invoke('ownCloud:set', patch)
   },
   cloud: {
     share: (clipId: string): Promise<{ id: string; shareUrl: string; expires: number | null }> => ipcRenderer.invoke('cloud:share', clipId),

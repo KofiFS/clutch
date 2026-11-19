@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import net from 'node:net'
 import path from 'node:path'
+import { isSafeProcessName } from '../security'
 
 const RATE = 48000
 const BYTES_PER_SEC = RATE * 2 * 2
@@ -10,8 +11,10 @@ const helperScript = () => path.join(app.isPackaged ? process.resourcesPath : ap
 
 /** Root process of an app (e.g. the Discord.exe whose parent isn't Discord.exe), by exe name. */
 export function findAppRootPid(processName: string): Promise<number | null> {
+  // The name ends up inside a PowerShell string, so only plain file-name characters are allowed.
+  if (!isSafeProcessName(processName)) return Promise.resolve(null)
   const exe = `${processName.replace(/\.exe$/i, '')}.exe`
-  const script = `Get-CimInstance Win32_Process -Filter "Name='${exe.replace(/'/g, "''")}'" | ForEach-Object { "{0} {1}" -f $_.ProcessId, $_.ParentProcessId }`
+  const script = `Get-CimInstance Win32_Process -Filter "Name='${exe}'" | ForEach-Object { "{0} {1}" -f $_.ProcessId, $_.ParentProcessId }`
   return new Promise((resolve) => {
     execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 10_000 }, (_e, stdout) => {
       const rows = String(stdout).trim().split(/\r?\n/).map((l) => l.trim().split(/\s+/).map(Number)).filter((r) => r.length === 2 && r[0] > 0)

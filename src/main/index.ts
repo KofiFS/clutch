@@ -1,4 +1,5 @@
 import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, nativeImage, net, Notification, protocol, screen, session, shell } from 'electron'
+import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Platform, Settings } from '../shared/types'
@@ -10,6 +11,7 @@ import { checkWebhook, makeShareable, postClip } from './share/discord'
 import { clipOfTheDay, DailyDigest } from './highlights'
 import { healthCheck } from './health'
 import { isInside, serveFile } from './fileServer'
+import { clipPatchFromRenderer, isDirectory, isServableMedia, lockWindow, openExternalSafe, restrictPermissions, settingsPatchFromRenderer } from './security'
 import type { LibraryQuery } from './library'
 import { forSmartRead, hasObs, proposeChanges, readObs, readScreenshots } from './importer'
 import { applyChanges } from './importer/parse'
@@ -24,6 +26,8 @@ import { OverlayToast } from './overlay'
 import { Recorder } from './recorder'
 import { SettingsStore } from './settings'
 import { AppTray, iconPath } from './tray'
+import { OwnCloudBackup } from './backup/ownCloud'
+import { CLOUD_APPS, detectCloudFolders } from './backup/folders'
 import { UploadScheduler, type EnqueueOptions } from './upload/scheduler'
 
 // The app is called Clutch, but its data (settings, clip index, thumbnails) predates the rename and
@@ -74,10 +78,10 @@ function createWindow() {
     title: 'Clutch',
     // Not throttled while hidden in the tray: this window captures system audio, and a throttled
     // page delivers it in bursts.
-    webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true, backgroundThrottling: false }
+    webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, backgroundThrottling: false }
   })
   win.once('ready-to-show', () => { if (!settings.get().app.startMinimized && !launchedHidden) win?.show() })
-  win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
+  lockWindow(win.webContents, isOwnPage)
   // Production UI is served from cf://app/ (a registered secure scheme) rather than file:// so that
   // audio worklets, blob URLs and other secure-context features work.
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -99,6 +103,12 @@ function createWindow() {
   })
   win.on('closed', () => { win = null; updateMini() })
   for (const ev of ['show', 'hide', 'minimize', 'restore'] as const) win.on(ev as 'show', () => updateMini())
+}
+
+/** Pages that belong to Clutch: the built UI, or the dev server while developing. */
+function isOwnPage(url: string): boolean {
+  const dev = process.env.ELECTRON_RENDERER_URL
+  return url.startsWith('cf://app/') || (!!dev && url.startsWith(dev))
 }
 
 const mainVisible = () => !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()
@@ -149,10 +159,13 @@ function loginItem(): Electron.Settings {
     : { path: process.execPath, args: [app.getAppPath(), '--hidden'], name: 'Clutch' }
 }
 function launchAtLoginIsOn(): boolean {
+  if (isolatedCopy) return settings.get().app.launchAtLogin
   return app.getLoginItemSettings(loginItem() as Electron.LoginItemSettingsOptions).openAtLogin
 }
+/** Test and demo copies (CLUTCH_USER_DATA) never touch the Windows startup entry, which the installed app owns. */
+const isolatedCopy = !!process.env.CLUTCH_USER_DATA
 function applyLaunchAtLogin(on: boolean) {
-  if (process.platform !== 'win32') return
+  if (process.platform !== 'win32' || isolatedCopy || process.windowsStore) return
   app.setLoginItemSettings({ ...loginItem(), openAtLogin: on })
 }
 
@@ -264,6 +277,33 @@ app.whenReady().then(async () => {
     return cloud
   }
 
+  // "Your cloud": copies into the user's own synced folder (Google Drive, OneDrive, Dropbox...).
+  const ownCloud = new OwnCloudBackup(recorder.library, () => settings.get().ownCloud, () => recorder.status.running || !!recorder.status.starting, dataDir)
+  ownCloud.on('change', (st) => send('own-cloud', st))
+  ownCloud.on('log', (m) => recorder.log('info', m))
+  ownCloud.start()
+  ipcMain.handle('ownCloud:detect', () => ({ folders: detectCloudFolders(), apps: CLOUD_APPS }))
+  ipcMain.handle('ownCloud:state', () => ownCloud.state)
+  ipcMain.handle('ownCloud:savedFor', (_e, clipId: string) => ownCloud.savedFor(clipId))
+  ipcMain.handle('ownCloud:save', (_e, ids: string[]) => ownCloud.enqueue(Array.isArray(ids) ? ids.filter((x) => typeof x === 'string') : []))
+  ipcMain.handle('ownCloud:open', () => { const st = ownCloud.state; if (st.folder) { fs.mkdirSync(st.folder, { recursive: true }); void shell.openPath(st.folder) } })
+  ipcMain.handle('ownCloud:pickFolder', async () => {
+    const r = await dialog.showOpenDialog(win!, { title: 'Choose the folder your cloud app syncs', properties: ['openDirectory', 'createDirectory'] })
+    return r.canceled ? null : r.filePaths[0]
+  })
+  ipcMain.handle('ownCloud:set', (_e, patch: Partial<import('../shared/types').OwnCloudSettings>) => {
+    const cur = settings.get().ownCloud
+    const next = { ...cur }
+    if (typeof patch.folder === 'string') next.folder = patch.folder
+    if (patch.provider !== undefined) next.provider = patch.provider
+    if (patch.mode === 'all' || patch.mode === 'favorites' || patch.mode === 'manual') next.mode = patch.mode
+    if (typeof patch.enabled === 'boolean') next.enabled = patch.enabled
+    // "Every new clip" counts from the moment it is switched on, not the whole back catalogue.
+    if (next.enabled && next.mode === 'all' && (!cur.enabled || cur.mode !== 'all')) next.enabledSince = Date.now()
+    settings.set({ ownCloud: next })
+    return ownCloud.state
+  })
+
   // Pro: back up favorites in the background, one at a time.
   let backingUp = false
   setInterval(async () => {
@@ -292,16 +332,18 @@ app.whenReady().then(async () => {
     const rel = decodeURIComponent(u.pathname.replace(/^\//, ''))
     if (u.host === 'app') {
       const target = path.normalize(path.join(rendererDir, rel || 'index.html'))
-      if (!target.startsWith(rendererDir)) return new Response('forbidden', { status: 403 })
+      if (!isInside(target, [rendererDir])) return new Response('forbidden', { status: 403 })
       return net.fetch(pathToFileURL(target).toString())
     }
     // Only serve clips, thumbnails and icons: the clips folder, the app's data folder,
     // and any folder that already holds a library clip (e.g. an older clips folder).
     const file = path.normalize(rel)
     const roots = [settings.get().capture.outputDir, app.getPath('userData'), ...(settings.get().libraries ?? []).map((l) => l.path), ...new Set(recorder.library.own().map((c) => path.dirname(path.dirname(c.file))))]
-    if (!isInside(file, roots)) return new Response('forbidden', { status: 403 })
+    if (!isServableMedia(file) || !isInside(file, roots)) return new Response('forbidden', { status: 403 })
     return serveFile(file, req)
   })
+
+  restrictPermissions()
 
   // System audio: the renderer calls getDisplayMedia({audio:true}) and we hand it the screen + loopback audio.
   session.defaultSession.setDisplayMediaRequestHandler((_req, cb) => {
@@ -395,7 +437,7 @@ app.whenReady().then(async () => {
 
   // ---- IPC ----
   ipcMain.handle('settings:get', () => settings.get())
-  ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => settings.set(patch))
+  ipcMain.handle('settings:set', (_e, patch: unknown) => settings.set(settingsPatchFromRenderer(patch, settings.get())))
   ipcMain.handle('settings:pickFolder', async () => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })
     return r.canceled ? null : r.filePaths[0]
@@ -408,7 +450,7 @@ app.whenReady().then(async () => {
     if (recorder.status.running) shrinkToWidget()
     return recorder.status
   })
-  ipcMain.handle('system:openExternal', (_e, url: string) => shell.openExternal(url))
+  ipcMain.handle('system:openExternal', (_e, url: unknown) => openExternalSafe(url))
   ipcMain.handle('system:openLogs', () => shell.openPath(logDir()))
   ipcMain.handle('system:health', () => healthCheck(settings.get(), recorder.status))
   ipcMain.handle('system:testHotkey', (_e, accel: string) => {
@@ -490,7 +532,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('ads:open', (_e, ad: { id: string; url: string }) => {
     account.adClick(ad.id)
     if (ad.url === 'clutch://pro') { showWindow('settings'); send('open-pro', null); return }
-    if (/^https:\/\//.test(ad.url)) void shell.openExternal(ad.url)
+    if (/^https:\/\//.test(ad.url)) void openExternalSafe(ad.url)
   })
   ipcMain.handle('capture:monitors', () => screen.getAllDisplays().map((d, i) => ({ index: i, label: d.label || `Monitor ${i + 1}`, width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor), primary: d.id === screen.getPrimaryDisplay().id })))
   ipcMain.handle('capture:pickRegion', async (_e, monitorIndex: number) => {
@@ -570,7 +612,8 @@ app.whenReady().then(async () => {
     if (!wasActive && recorder.status.running) shrinkToWidget()
   })
   ipcMain.handle('bookmark:add', () => recorder.bookmark())
-  ipcMain.handle('system:canLaunchAtLogin', () => process.platform === 'win32')
+  // A Microsoft Store (MSIX) copy can't use the Run key that the installer version uses.
+  ipcMain.handle('system:canLaunchAtLogin', () => process.platform === 'win32' && !process.windowsStore)
   ipcMain.handle('activity:list', () => recorder.activity)
   ipcMain.on('audio:push', (_e, pcm: ArrayBuffer, levelDb: number) => recorder.pushSystemAudio(Buffer.from(pcm), levelDb))
 
@@ -596,12 +639,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('libraries:remove', (_e, id: string) => sources.remove(id))
   ipcMain.handle('libraries:rename', (_e, id: string, name: string) => sources.rename(id, name))
   ipcMain.handle('libraries:rescan', (_e, id?: string) => (id ? sources.scan(id) : sources.scanAll()))
-  ipcMain.handle('libraries:open', (_e, id: string) => { const l = (settings.get().libraries ?? []).find((x) => x.id === id); if (l) void shell.openPath(l.path) })
+  ipcMain.handle('libraries:open', (_e, id: string) => { const l = (settings.get().libraries ?? []).find((x) => x.id === id); if (l && isDirectory(l.path)) void shell.openPath(l.path) })
   ipcMain.handle('library:get', (_e, id: string) => recorder.library.get(id))
   ipcMain.handle('library:games', () => recorder.library.games())
   ipcMain.handle('library:tags', () => recorder.library.tags())
   ipcMain.handle('library:stats', () => recorder.library.stats())
-  ipcMain.handle('library:update', (_e, id: string, patch: Record<string, unknown>) => recorder.library.update(id, patch))
+  ipcMain.handle('library:update', (_e, id: string, patch: unknown) => recorder.library.update(id, clipPatchFromRenderer(patch)))
   ipcMain.handle('library:bulk', (_e, ids: string[], patch: { favorite?: boolean; addTags?: string[] }) => recorder.library.bulk(ids, patch))
   ipcMain.handle('library:trash', (_e, ids: string[]) => {
     const useTrash = settings.get().app.useTrash
@@ -611,8 +654,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('library:restore', (_e, ids: string[]) => { for (const id of ids) recorder.library.restore(id) })
   ipcMain.handle('library:remove', (_e, ids: string[]) => { for (const id of ids) recorder.library.remove(id) })
   ipcMain.handle('library:emptyTrash', () => recorder.library.emptyTrash())
-  ipcMain.handle('library:reveal', (_e, file: string) => shell.showItemInFolder(file))
-  ipcMain.handle('library:openFolder', () => shell.openPath(settings.get().capture.outputDir))
+  // Only files Clutch lists (its clips and other libraries' videos), not any path the UI sends.
+  ipcMain.handle('library:reveal', (_e, file: string) => { if (recorder.library.everything().some((c) => c.file === file)) shell.showItemInFolder(file) })
+  // shell.openPath runs programs too, so only ever hand it a folder.
+  ipcMain.handle('library:openFolder', () => { const dir = settings.get().capture.outputDir; return isDirectory(dir) ? shell.openPath(dir) : '' })
   ipcMain.handle('library:trim', async (_e, id: string, startSec: number, endSec: number, mode: 'new' | 'replace') => {
     const clip = recorder.library.get(id)
     if (!clip) return null
@@ -651,19 +696,10 @@ app.whenReady().then(async () => {
       return r
     }
     if (!account.state.signedIn) throw new Error('SIGN_IN')
-    const { url } = await account.api<{ url: string }>('POST', '/api/youtube/connect')
-    void shell.openExternal(url)
-    // Wait for the browser consent to finish on the server (up to 5 minutes).
-    for (let i = 0; i < 150; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      const st = await account.api<{ connected: boolean; channel: string | null }>('GET', '/api/youtube').catch(() => null)
-      if (st?.connected) {
-        setYouTube({ connected: true, channelTitle: st.channel ?? 'YouTube', via: 'account' })
-        showWindow()
-        return { channelTitle: st.channel ?? 'YouTube' }
-      }
-    }
-    throw new Error('Timed out waiting for Google. Try again.')
+    const r = await account.connectYouTube()
+    setYouTube({ connected: true, channelTitle: r.channel ?? 'YouTube', via: 'account' })
+    showWindow()
+    return { channelTitle: r.channel ?? 'YouTube' }
   })
   ipcMain.handle('youtube:disconnect', async () => {
     if (settings.get().upload.youtube.via === 'account') await account.api('POST', '/api/youtube/disconnect').catch(() => undefined)
@@ -687,7 +723,7 @@ app.whenReady().then(async () => {
     bookmark: () => recorder.bookmark(),
     isLong: () => !!recorder.longRecording,
     hotkeys: () => ({ clip: settings.get().capture.clipHotkey, long: settings.get().capture.longRecordHotkey, bookmark: settings.get().capture.bookmarkHotkey }),
-    launchAtLogin: () => ({ enabled: settings.get().app.launchAtLogin, available: app.isPackaged && process.platform === 'win32' }),
+    launchAtLogin: () => ({ enabled: settings.get().app.launchAtLogin, available: app.isPackaged && process.platform === 'win32' && !process.windowsStore }),
     setLaunchAtLogin: (on) => { settings.set({ app: { ...settings.get().app, launchAtLogin: on } }) },
     startStop: () => void (recorder.status.running || recorder.isPaused ? recorder.stop('manual') : recorder.start('manual').then((ok) => { if (ok) shrinkToWidget() })),
     isPaused: () => recorder.isPaused,

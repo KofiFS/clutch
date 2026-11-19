@@ -45,8 +45,9 @@ export function youtubeStatus(userId) {
   return { enabled: youtubeEnabled(), connected: !!row, channel: row?.channel ?? null }
 }
 
-export function youtubeConnectUrl(userId) {
-  const state = sign({ sub: userId }, { kind: 'yt', ttlSeconds: 600 })
+/** `back`: the app's loopback address, where the browser goes after Google. */
+export function youtubeConnectUrl(userId, back) {
+  const state = sign({ sub: userId, redirect: back }, { kind: 'yt', ttlSeconds: 600 })
   const q = new URLSearchParams({
     client_id: config.providers.google.id,
     redirect_uri: callbackUrl(),
@@ -71,10 +72,12 @@ async function tokenRequest(params) {
   return j
 }
 
-/** OAuth callback: store the refresh token for the user named in the signed state. */
-export async function youtubeFinish(code, state) {
+/** Finish connecting: only the signed-in user who started it can store the channel on their account. */
+export async function youtubeFinish(code, state, userId) {
   const s = verify(state, 'yt')
   if (!s) throw new Error('This link expired. Start connecting again from Clutch.')
+  if (s.sub !== userId) throw new Error('This YouTube connection was started by a different Clutch account.')
+  if (!code) throw new Error('Google did not send a code back.')
   const t = await tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: callbackUrl() })
   if (!t.refresh_token) throw new Error('Google did not grant offline access. Try again.')
   let channel = null

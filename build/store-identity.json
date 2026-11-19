@@ -1,0 +1,6 @@
+{
+  "_readme": "Copy these three values from Partner Center > Apps and games > Clutch > Product management > Product identity, after reserving the name. Until then the package builds for local testing only and the Store will reject it.",
+  "identityName": "ShangkoCo.Clutch",
+  "publisher": "CN=00000000-0000-0000-0000-000000000000",
+  "publisherDisplayName": "Shangko Co"
+}

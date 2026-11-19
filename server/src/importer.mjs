@@ -39,17 +39,13 @@ const ReadSettings = z.object({
   notes: z.array(z.string())
 })
 
+import { takeAiSlot } from './limits.mjs'
+
 export const smartReadEnabled = () => !!config.anthropicKey
 
-/** Reads used today, per user. Resets when the server restarts, which only ever errs on the generous side. */
-const used = new Map()
-export function smartReadsLeft(userId, limit) {
-  const key = `${userId}:${new Date().toISOString().slice(0, 10)}`
-  return { key, left: Math.max(0, limit - (used.get(key) ?? 0)) }
-}
-export function countSmartRead(key) {
-  used.set(key, (used.get(key) ?? 0) + 1)
-  if (used.size > 50_000) used.clear()
+/** Takes one of today's smart reads for this user (and one from the server-wide cap). Null when none are left. */
+export function takeSmartRead(userId, limit) {
+  return takeAiSlot('read', userId, limit)
 }
 
 let client = null
